@@ -514,26 +514,6 @@ pub fn today() -> NaiveDate {
     chrono::Local::now().date_naive()
 }
 
-/// 解析 YYYY-MM-DD 日期。
-pub fn parse_date(text: &str) -> Result<NaiveDate, String> {
-    let text = text.trim();
-    if text.is_empty() {
-        return Err("日期不能为空".to_string());
-    }
-    NaiveDate::parse_from_str(text, DATE_FORMAT)
-        .map_err(|_| format!("日期格式应为 YYYY-MM-DD：{text}"))
-}
-
-/// 解析可选日期；空字符串返回 None。
-pub fn parse_optional_date(text: &str) -> Result<Option<NaiveDate>, String> {
-    let text = text.trim();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        parse_date(text).map(Some)
-    }
-}
-
 /// 月份键，例如 2026-09。
 pub fn month_key(date: NaiveDate) -> String {
     format!("{:04}-{:02}", date.year(), date.month())

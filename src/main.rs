@@ -100,6 +100,8 @@ fn run_gui() {
         // 组件库的图标是 SVG，需要注册 AssetSource 才能渲染。
         .with_assets(gpui_component_assets::Assets)
         .run(|cx: &mut App| {
+        // 组件库自带的界面文案（日历的星期/月份、日期选择器等）用中文。
+        gpui_component::set_locale("zh-CN");
         // 组件库初始化：主题、组件全局状态与默认快捷键。
         gpui_component::init(cx);
         // 把本项目配色灌进组件库主题，避免两套皮肤混用。

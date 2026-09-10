@@ -11,6 +11,8 @@
 ### 1. 投递管理
 
 - 记录公司、岗位、投递渠道、城市、薪资范围、投递日期、备注、下一步动作与日期。
+- **投递日期 / 下一步日期用日历选择**（组件库 `DatePicker`，中文月份与星期）；
+  投递日期只能选到今天及以前，下一步日期可以留空、也可以选未来。
 - 阶段流转：已投递 → 简历筛选 → 笔试/测评 → 一面 → 二面 → 三面/终面 → HR 面 → Offer。
 - 支持终止状态：已拒绝、已放弃；终止后仍保留此前到达过的阶段历史。
 - 每次阶段变更都会写入历史事件，用于精确计算“到达过哪些阶段”和周期天数。
@@ -79,6 +81,7 @@
 | 投递管理 | [applications.png](docs/screenshots/applications.png) |
 | 阶段统计 | [analytics.png](docs/screenshots/analytics.png) |
 | 新增投递（gpui-component 对话框） | [form.png](docs/screenshots/form.png) |
+| 投递日期日历选择 | [form-date.png](docs/screenshots/form-date.png) |
 | 编辑投递（含标签与阶段选择） | [form-tags.png](docs/screenshots/form-tags.png) |
 | 设置（数据管理、数据体检、快捷键） | [settings.png](docs/screenshots/settings.png) |
 
