@@ -10,6 +10,8 @@ use gpui::{
 use gpui_component::{
     Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
+    calendar::{Date, Matcher},
+    date_picker::{DatePicker, DatePickerState},
     dialog::DialogButtonProps,
     input::{Input, InputEvent, InputState},
     notification::Notification,
@@ -90,9 +92,11 @@ pub struct FormState {
     pub channel: Entity<InputState>,
     pub location: Entity<InputState>,
     pub salary: Entity<InputState>,
-    pub applied_at: Entity<InputState>,
+    /// 投递日期用日历选择（只能选到今天及以前）。
+    pub applied_at: Entity<DatePickerState>,
     pub next_action: Entity<InputState>,
-    pub next_action_at: Entity<InputState>,
+    /// 下一步日期用日历选择（可留空、可选未来）。
+    pub next_action_at: Entity<DatePickerState>,
     pub notes: Entity<InputState>,
     pub tag_input: Entity<InputState>,
     pub tags: Vec<String>,
@@ -120,17 +124,41 @@ fn new_input(window: &mut Window, cx: &mut App, placeholder: &str) -> Entity<Inp
     cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
 }
 
+/// 建一个日历选择器。
+///
+/// `no_future` 为真时，未来的日期在日历里不可选（投递日期不允许晚于今天）；
+/// `with_default` 为真时默认选中今天，否则留空。
+fn new_date_picker(
+    window: &mut Window,
+    cx: &mut App,
+    default: Option<NaiveDate>,
+    no_future: bool,
+) -> Entity<DatePickerState> {
+    cx.new(move |cx| {
+        let mut state = DatePickerState::new(window, cx).date_format(model::DATE_FORMAT);
+        if no_future {
+            let today = model::today();
+            state = state.disabled_matcher(Matcher::custom(move |date| *date > today));
+        }
+        if let Some(date) = default {
+            state.set_date(date, window, cx);
+        }
+        state
+    })
+}
+
 impl FormState {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
+        let today = model::today();
         Self {
             company: new_input(window, cx, "例如：星海科技"),
             position: new_input(window, cx, "例如：Rust 后端工程师"),
             channel: new_input(window, cx, "BOSS直聘 / 内推 / 官网 ..."),
             location: new_input(window, cx, "例如：上海"),
             salary: new_input(window, cx, "例如：30-45K"),
-            applied_at: new_input(window, cx, "YYYY-MM-DD"),
+            applied_at: new_date_picker(window, cx, Some(today), true),
             next_action: new_input(window, cx, "例如：准备二面"),
-            next_action_at: new_input(window, cx, "YYYY-MM-DD（可留空）"),
+            next_action_at: new_date_picker(window, cx, None, false),
             notes: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder("备注：面试反馈、联系人、薪资细节 ...")
@@ -151,43 +179,45 @@ impl FormState {
             &self.channel,
             &self.location,
             &self.salary,
-            &self.applied_at,
             &self.next_action,
-            &self.next_action_at,
             &self.notes,
             &self.tag_input,
         ] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
-        self.applied_at.update(cx, |input, cx| {
-            input.set_value(model::today().to_string(), window, cx)
-        });
+        self.applied_at
+            .update(cx, |state, cx| state.set_date(model::today(), window, cx));
+        self.next_action_at
+            .update(cx, |state, cx| state.set_date(Date::Single(None), window, cx));
         self.tags.clear();
         self.stage = Stage::Applied;
     }
 
     /// 载入一条已有记录，准备编辑。
     pub fn load(&mut self, application: &JobApplication, window: &mut Window, cx: &mut App) {
-        let pairs: [(&Entity<InputState>, String); 9] = [
+        let pairs: [(&Entity<InputState>, String); 7] = [
             (&self.company, application.company.clone()),
             (&self.position, application.position.clone()),
             (&self.channel, application.channel.clone()),
             (&self.location, application.location.clone()),
             (&self.salary, application.salary.clone()),
-            (&self.applied_at, application.applied_at.to_string()),
             (&self.next_action, application.next_action.clone()),
-            (
-                &self.next_action_at,
-                application
-                    .next_action_at
-                    .map(|date| date.to_string())
-                    .unwrap_or_default(),
-            ),
             (&self.notes, application.notes.clone()),
         ];
         for (input, value) in pairs {
             input.update(cx, |input, cx| input.set_value(value, window, cx));
         }
+        let applied_at = application.applied_at;
+        self.applied_at
+            .update(cx, |state, cx| state.set_date(applied_at, window, cx));
+        let next_action_at = application.next_action_at;
+        self.next_action_at.update(cx, |state, cx| {
+            state.set_date(
+                next_action_at.map_or(Date::Single(None), |date| Date::Single(Some(date))),
+                window,
+                cx,
+            )
+        });
         self.tags = application.tags.clone();
         self.tag_input
             .update(cx, |input, cx| input.set_value("", window, cx));
@@ -204,8 +234,15 @@ impl FormState {
         if position.is_empty() {
             return Err("岗位名称不能为空".to_string());
         }
-        let applied_at = model::parse_date(&self.applied_at.read(cx).value())?;
-        let next_action_at = model::parse_optional_date(&self.next_action_at.read(cx).value())?;
+        // 日期来自日历选择器，这里只做「有没有选」的判断。
+        let applied_at = match self.applied_at.read(cx).date() {
+            Date::Single(Some(date)) => date,
+            _ => return Err("请选择投递日期".to_string()),
+        };
+        let next_action_at = match self.next_action_at.read(cx).date() {
+            Date::Single(Some(date)) => Some(date),
+            _ => None,
+        };
         // 投递日期晚于今天会让“最近 30 天 / 月度趋势”等口径对不上，这里直接拦下。
         let today = model::today();
         if applied_at > today {
@@ -1078,6 +1115,29 @@ impl RootView {
             .child(Input::new(&input).cleanable(true))
     }
 
+    /// 表单里的日期字段：点击弹出日历选择，不需要手输日期。
+    fn date_field(&self, label: &str, state: Entity<DatePickerState>, placeholder: &str) -> Div {
+        let placeholder = placeholder.to_string();
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .flex_1()
+            .min_w(px(0.))
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme::muted())
+                    .child(label.to_string()),
+            )
+            .child(
+                DatePicker::new(&state)
+                    .placeholder(placeholder)
+                    .cleanable(true),
+            )
+    }
+
     /// 表单内容（作为组件库 Dialog 的主体渲染）。
     ///
     /// Dialog 的构建闭包只能拿到 `&App`，所以这里的交互回调统一用
@@ -1119,9 +1179,17 @@ impl RootView {
                     .flex()
                     .flex_row()
                     .gap_3()
-                    .child(self.form_field("投递日期 *", self.form.applied_at.clone()))
+                    .child(self.date_field(
+                        "投递日期 *",
+                        self.form.applied_at.clone(),
+                        "选择投递日期",
+                    ))
                     .child(self.form_field("下一步动作", self.form.next_action.clone()))
-                    .child(self.form_field("下一步日期", self.form.next_action_at.clone())),
+                    .child(self.date_field(
+                        "下一步日期",
+                        self.form.next_action_at.clone(),
+                        "选择日期（可留空）",
+                    )),
             )
             .child(self.form_field("备注", self.form.notes.clone()))
             .child(

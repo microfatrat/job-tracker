@@ -197,7 +197,9 @@ pub fn install_component_theme(cx: &mut App) {
     c.background = panel();
     c.foreground = text();
     c.border = border();
-    c.input = panel();
+    // 组件库把 theme.input 当作「输入框边框色」用（文本输入、日期选择器、
+    // 下拉框、勾选框都是），所以这里给边框色而不是背景色。
+    c.input = border_strong();
     c.caret = text();
     c.ring = accent();
     c.selection = accent_soft();
