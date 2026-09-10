@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=JobFlow
+Comment=求职简历投递与面试阶段统计系统
+Exec=job-tracker
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=job-tracker
+Keywords=job;resume;interview;求职;面试;
