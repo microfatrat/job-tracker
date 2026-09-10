@@ -4,7 +4,7 @@
 #   .\scripts\package-windows.ps1                     # release 构建 + 便携 ZIP
 #   .\scripts\package-windows.ps1 -SkipBuild          # 只重新打包
 #   .\scripts\package-windows.ps1 -NoDefaultFeatures  # 跳过 windows-manifest（没有 rc.exe 时）
-#   .\scripts\package-windows.ps1 -WindowsGui         # 隐藏 release 控制台窗口
+#   .\scripts\package-windows.ps1 -WindowsGui         # 连 debug 构建也隐藏控制台（release 默认已隐藏）
 #   .\scripts\package-windows.ps1 -Installer          # 同时用 Inno Setup 生成安装程序
 
 [CmdletBinding()]
@@ -81,6 +81,7 @@ if (-not $SkipBuild) {
         $cargoArgs += "--no-default-features"
     }
     if ($WindowsGui) {
+        # release 构建本来就是 GUI 子系统（不弹控制台），这个开关只对 debug 有意义
         $cargoArgs += @("--features", "windows-gui")
     }
     Write-Host ""
