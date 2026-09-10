@@ -213,6 +213,9 @@ impl RootView {
         let next_stage = stage.next_progress();
         let can_advance = next_stage.is_some();
         let history = application.history.clone();
+        // 删除需要点两次：第一次把按钮变成“确认删除”。
+        let confirming_delete = self.confirm_delete == Some(id);
+        let chronology_issue = application.has_chronology_issue();
 
         card()
             .flex()
@@ -260,14 +263,33 @@ impl RootView {
                             .flex()
                             .flex_row()
                             .gap_2()
+                            .when(application.history.len() > 1, |el| {
+                                el.child(
+                                    secondary_button("undo-stage", "撤销上次阶段变更").on_click(
+                                        cx.listener(|this, _, _window, cx| {
+                                            this.undo_last_stage_change(cx)
+                                        }),
+                                    ),
+                                )
+                            })
                             .child(secondary_button("edit-application", "编辑").on_click(
                                 cx.listener(move |this, _, window, cx| {
                                     this.open_form(Some(id), window, cx)
                                 }),
                             ))
-                            .child(danger_button("delete-application", "删除").on_click(
-                                cx.listener(|this, _, _window, cx| this.delete_selected(cx)),
-                            )),
+                            .child(if confirming_delete {
+                                danger_button("delete-application", "确认删除").on_click(
+                                    cx.listener(|this, _, _window, cx| {
+                                        this.request_delete_selected(cx)
+                                    }),
+                                )
+                            } else {
+                                danger_button("delete-application", "删除").on_click(
+                                    cx.listener(|this, _, _window, cx| {
+                                        this.request_delete_selected(cx)
+                                    }),
+                                )
+                            }),
                     ),
             )
             .child(divider())
@@ -364,7 +386,15 @@ impl RootView {
                             .days_to_offer()
                             .map(|days| format!("{} 天", days))
                             .unwrap_or_else(|| "--".to_string()),
-                    )),
+                    ))
+                    .when(chronology_issue, |el| {
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::danger())
+                                .child("⚠ 存在早于投递日期的阶段事件，这两天数不参与平均统计"),
+                        )
+                    }),
             )
             .when(!application.tags.is_empty(), |el| {
                 el.child(divider()).child(

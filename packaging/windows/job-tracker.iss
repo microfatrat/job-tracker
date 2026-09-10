@@ -1,14 +1,14 @@
 ; JobFlow Windows 安装程序脚本（Inno Setup 6+）
 ;
 ; 用法：
-;   iscc /DMyAppVersion=0.1.0 packaging\windows\job-tracker.iss
+;   iscc /DMyAppVersion=0.2.0 packaging\windows\job-tracker.iss
 ; 或者直接运行：
 ;   .\scripts\package-windows.ps1 -Installer
 ;
 ; 编译前请先执行 cargo build --release，确保 target\release\job-tracker.exe 存在。
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.2.0"
 #endif
 
 #define MyAppName "JobFlow"

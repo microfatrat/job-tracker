@@ -6,7 +6,6 @@ pub mod applications;
 pub mod components;
 pub mod dashboard;
 pub mod settings;
-pub mod text_input;
 pub mod theme;
 
-pub use app::RootView;
+pub use app::{AppShell, RootView};

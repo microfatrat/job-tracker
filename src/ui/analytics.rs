@@ -9,9 +9,8 @@ use crate::{
 };
 
 impl RootView {
-    pub fn render_analytics(&self, _cx: &Context<Self>) -> impl IntoElement {
+    pub fn render_analytics(&self, analytics: &Analytics, _cx: &Context<Self>) -> impl IntoElement {
         let today = model::today();
-        let analytics = Analytics::compute(&self.store, today);
         let overview = &analytics.overview;
         let max_applied = analytics
             .months
@@ -22,6 +21,14 @@ impl RootView {
             .max(1);
         let stage_counts = self.store.stage_counts();
         let tag_counts = self.store.tag_counts();
+        let data_warnings: Vec<String> = [
+            (overview.chronology_issues, "条记录存在早于投递日期的阶段事件，已排除在平均周期之外"),
+            (overview.future_applied, "条记录的投递日期晚于今天，未计入最近 30 天与月度趋势"),
+        ]
+        .into_iter()
+        .filter(|(count, _)| *count > 0)
+        .map(|(count, text)| format!("{count} {text}"))
+        .collect();
 
         div()
             .flex()
@@ -44,7 +51,13 @@ impl RootView {
                     .child(div().text_sm().text_color(theme::muted()).child(format!(
                         "基于 {} 条投递记录计算 · 统计日期 {}",
                         overview.total, today
-                    ))),
+                    )))
+                    .children(data_warnings.into_iter().map(|warning| {
+                        div()
+                            .text_xs()
+                            .text_color(theme::warning())
+                            .child(format!("⚠ {warning}"))
+                    })),
             )
             .child(
                 div()
@@ -66,7 +79,7 @@ impl RootView {
                     .child(div().flex_1().child(kpi_card(
                         "Offer 率",
                         format!("{:.0}%", overview.offer_rate * 100.0),
-                        format!("{} 个 Offer", overview.offers),
+                        format!("{} 条曾拿到 Offer（含之后放弃）", overview.offers),
                         theme::success(),
                     )))
                     .child(
@@ -76,7 +89,7 @@ impl RootView {
                                 .avg_days_to_interview
                                 .map(|days| format!("{:.0} 天", days))
                                 .unwrap_or_else(|| "--".to_string()),
-                            "从投递到第一次面试",
+                            "从投递到第一次面试（仅统计已面试的记录）",
                             theme::purple(),
                         )),
                     )
@@ -87,7 +100,7 @@ impl RootView {
                                 .avg_days_to_offer
                                 .map(|days| format!("{:.0} 天", days))
                                 .unwrap_or_else(|| "--".to_string()),
-                            "从投递到拿到 Offer",
+                            "从投递到拿到 Offer（仅统计已拿 Offer 的记录）",
                             theme::orange(),
                         )),
                     ),
@@ -157,12 +170,7 @@ impl RootView {
                                         )
                                         .child(progress_bar(stat.step_conversion, color))
                                         .child({
-                                            let previous = if stat.step_conversion > 0.0 {
-                                                (stat.reached as f32 / stat.step_conversion).round()
-                                                    as usize
-                                            } else {
-                                                stat.reached
-                                            };
+                                            let previous = stat.previous_reached;
                                             let lost = previous.saturating_sub(stat.reached);
                                             div().text_xs().text_color(theme::subtle()).child(
                                                 format!(

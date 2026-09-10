@@ -2,9 +2,10 @@
 /target
 **/*.rs.bk
 
-# 本地构建环境（WSL 下用到的 CARGO_HOME / 原生库前缀）
+# 本地构建环境（WSL 下用到的 CARGO_HOME / 原生库前缀 / cargo 配置）
 /.cargo-home
 /.native
+/.cargo/config.toml
 
 # 打包输出
 /dist
@@ -25,3 +26,9 @@ id_ed25519*
 id_rsa*
 *.pem
 *.key
+
+# 数据文件的同目录备份（损坏备份 / 覆盖前备份）
+*.bad-*.json
+*.backup-*.json
+*.reset-*.json
+*.clear-*.json

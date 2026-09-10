@@ -1,20 +1,31 @@
-//! 可复用的 UI 小组件。
+//! 可复用的 UI 小组件（基于 `gpui-component` 组件库实现）。
+//!
+//! 这里保留原有的 helper 名称与用法，内部改用组件库的 Button / Tag /
+//! Progress / ListItem 等，样式与交互（hover、focus ring、禁用态、键盘可达性）
+//! 交给组件库统一处理。
 
-use gpui::{Div, FontWeight, Hsla, SharedString, div, prelude::*, px, relative};
+use gpui::{App, Div, FontWeight, Hsla, ParentElement, SharedString, Styled, div, prelude::*, px};
+use gpui_component::{
+    Icon, IconName, Selectable as _, Sizable as _,
+    button::{Button, ButtonCustomVariant, ButtonVariants as _},
+    list::ListItem,
+    progress::Progress,
+    tag::Tag,
+};
 
 use crate::{
-    model::{JobApplication, Stage},
+    model::{self, JobApplication, Stage},
     stats::StageStat,
     ui::theme,
 };
 
-/// 白色卡片容器。
+/// 卡片容器。
 pub fn card() -> Div {
     div()
         .bg(theme::panel())
         .border_1()
         .border_color(theme::border())
-        .rounded_lg()
+        .rounded(px(10.))
         .shadow_sm()
 }
 
@@ -58,7 +69,7 @@ pub fn kpi_card(
         )
         .child(
             div()
-                .text_3xl()
+                .text_2xl()
                 .font_weight(FontWeight::BOLD)
                 .text_color(color)
                 .child(value.into()),
@@ -71,35 +82,20 @@ pub fn kpi_card(
         )
 }
 
-/// 阶段徽章。
-pub fn stage_badge(stage: Stage) -> Div {
-    div()
-        .px_2()
-        .py_0p5()
-        .rounded_full()
-        .bg(theme::stage_soft(stage))
-        .text_xs()
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(theme::stage_color(stage))
-        .child(stage.label())
+/// 阶段徽章（组件库 Tag，保留每个阶段的配色）。
+pub fn stage_badge(stage: Stage) -> Tag {
+    Tag::custom(
+        theme::stage_soft(stage),
+        theme::stage_color(stage),
+        theme::stage_color(stage),
+    )
+    .rounded_full()
+    .child(stage.label())
 }
 
-/// 进度条。
-pub fn progress_bar(fraction: f32, color: Hsla) -> Div {
-    let fraction = fraction.clamp(0.0, 1.0);
-    div()
-        .h(px(8.))
-        .w_full()
-        .bg(theme::slate_soft())
-        .rounded_full()
-        .overflow_hidden()
-        .child(
-            div()
-                .h_full()
-                .w(relative(fraction))
-                .bg(color)
-                .rounded_full(),
-        )
+/// 进度条（组件库 Progress）。
+pub fn progress_bar(fraction: f32, color: Hsla) -> Progress {
+    Progress::new().value(fraction.clamp(0.0, 1.0) * 100.0).bg(color)
 }
 
 /// 漏斗阶段行。
@@ -189,10 +185,12 @@ pub fn field_row(label: impl Into<String>, value: impl Into<String>) -> Div {
         .flex()
         .flex_row()
         .justify_between()
+        .items_start()
         .gap_4()
         .py_0p5()
         .child(
             div()
+                .flex_shrink_0()
                 .text_xs()
                 .text_color(theme::muted())
                 .child(label.into()),
@@ -209,6 +207,11 @@ pub fn field_row(label: impl Into<String>, value: impl Into<String>) -> Div {
 
 /// 空状态提示。
 pub fn empty_state(message: impl Into<String>) -> Div {
+    empty_state_with_icon(IconName::Inbox, message)
+}
+
+/// 带图标的空状态提示。
+pub fn empty_state_with_icon(icon: IconName, message: impl Into<String>) -> Div {
     div()
         .flex()
         .flex_col()
@@ -216,67 +219,61 @@ pub fn empty_state(message: impl Into<String>) -> Div {
         .justify_center()
         .gap_2()
         .py_8()
-        .text_sm()
-        .text_color(theme::muted())
-        .child(message.into())
+        .child(Icon::new(icon).size(px(28.)).text_color(theme::subtle()))
+        .child(
+            div()
+                .text_sm()
+                .text_color(theme::muted())
+                .child(message.into()),
+        )
 }
 
 /// 主按钮。
-pub fn primary_button(
-    id: impl Into<SharedString>,
-    label: impl Into<String>,
-) -> gpui::Stateful<Div> {
-    let id: SharedString = id.into();
-    div()
-        .id(id)
-        .px_3()
-        .py_1p5()
-        .rounded_md()
-        .bg(theme::accent())
-        .text_sm()
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(gpui::white())
-        .cursor_pointer()
-        .hover(|style| style.bg(gpui::rgb(0x1d4ed8)))
-        .child(label.into())
+pub fn primary_button(id: impl Into<SharedString>, label: impl Into<String>) -> Button {
+    Button::new(id.into()).primary().label(label.into())
 }
 
 /// 次要按钮。
-pub fn secondary_button(
-    id: impl Into<SharedString>,
-    label: impl Into<String>,
-) -> gpui::Stateful<Div> {
-    let id: SharedString = id.into();
-    div()
-        .id(id)
-        .px_3()
-        .py_1p5()
-        .rounded_md()
-        .bg(theme::panel_alt())
-        .border_1()
-        .border_color(theme::border_strong())
-        .text_sm()
-        .text_color(theme::text())
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::slate_soft()))
-        .child(label.into())
+pub fn secondary_button(id: impl Into<SharedString>, label: impl Into<String>) -> Button {
+    Button::new(id.into()).label(label.into())
 }
 
 /// 危险操作按钮。
-pub fn danger_button(id: impl Into<SharedString>, label: impl Into<String>) -> gpui::Stateful<Div> {
-    let id: SharedString = id.into();
-    div()
-        .id(id)
-        .px_3()
-        .py_1p5()
-        .rounded_md()
-        .bg(theme::danger_soft())
-        .text_sm()
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(theme::danger())
-        .cursor_pointer()
-        .hover(|style| style.bg(gpui::rgb(0xfecaca)))
-        .child(label.into())
+pub fn danger_button(id: impl Into<SharedString>, label: impl Into<String>) -> Button {
+    Button::new(id.into()).danger().label(label.into())
+}
+
+/// 侧边栏导航按钮。
+///
+/// 侧边栏是深色底，组件库默认的按钮文字色是深色前景色，直接用会看不见，
+/// 因此这里用 `custom` 变体显式指定深色底上的配色。
+pub fn nav_button(
+    cx: &App,
+    id: impl Into<SharedString>,
+    icon: IconName,
+    label: impl Into<String>,
+    active: bool,
+) -> Button {
+    let variant = if active {
+        ButtonCustomVariant::new(cx)
+            .color(theme::sidebar_active())
+            .foreground(gpui::white())
+            .hover(theme::sidebar_active())
+            .active(theme::sidebar_active())
+    } else {
+        ButtonCustomVariant::new(cx)
+            .color(theme::sidebar_bg())
+            .foreground(theme::text_on_dark())
+            .hover(theme::sidebar_hover())
+            .active(theme::sidebar_hover())
+    };
+
+    Button::new(id.into())
+        .w_full()
+        .justify_start()
+        .icon(Icon::new(icon))
+        .label(label.into())
+        .custom(variant)
 }
 
 /// 阶段筛选按钮。
@@ -284,169 +281,109 @@ pub fn stage_chip(
     stage: Option<Stage>,
     active: bool,
     id: impl Into<SharedString>,
-) -> gpui::Stateful<Div> {
-    let id: SharedString = id.into();
+) -> Button {
     let label = stage.map_or("全部".to_string(), |stage| stage.label().to_string());
-    let color = stage.map(theme::stage_color).unwrap_or(theme::accent());
-    let soft = stage.map(theme::stage_soft).unwrap_or(theme::accent_soft());
-    div()
-        .id(id)
-        .px_2p5()
-        .py_1()
-        .rounded_full()
-        .border_1()
-        .border_color(if active { color } else { theme::border() })
-        .bg(if active { soft } else { theme::panel() })
-        .text_xs()
-        .font_weight(if active {
-            FontWeight::SEMIBOLD
-        } else {
-            FontWeight::NORMAL
-        })
-        .text_color(if active { color } else { theme::muted() })
-        .cursor_pointer()
-        .hover(move |style| style.border_color(color))
-        .child(label)
+    Button::new(id.into())
+        .small()
+        .label(label)
+        .selected(active)
+        .when(active, |button| button.primary())
 }
 
-/// 标签徽章。
-pub fn tag_badge(tag: &str) -> Div {
-    div()
-        .px_1p5()
-        .py_0p5()
+/// 标签徽章（组件库 Tag）。
+pub fn tag_badge(tag: &str) -> Tag {
+    Tag::secondary()
         .rounded_full()
-        .bg(theme::accent_soft())
-        .text_xs()
-        .text_color(theme::accent())
         .child(tag.to_string())
 }
 
-/// 通用筛选 chip（用于标签筛选）。
+/// 通用筛选按钮（用于标签筛选）。
 pub fn filter_chip(
     label: impl Into<String>,
     active: bool,
     id: impl Into<SharedString>,
-) -> gpui::Stateful<Div> {
-    let id: SharedString = id.into();
-    div()
-        .id(id)
-        .px_2p5()
-        .py_1()
-        .rounded_full()
-        .border_1()
-        .border_color(if active {
-            theme::accent()
-        } else {
-            theme::border()
-        })
-        .bg(if active {
-            theme::accent_soft()
-        } else {
-            theme::panel()
-        })
-        .text_xs()
-        .font_weight(if active {
-            FontWeight::SEMIBOLD
-        } else {
-            FontWeight::NORMAL
-        })
-        .text_color(if active {
-            theme::accent()
-        } else {
-            theme::muted()
-        })
-        .cursor_pointer()
-        .hover(|style| style.border_color(theme::accent()))
-        .child(label.into())
+) -> Button {
+    Button::new(id.into())
+        .small()
+        .label(label.into())
+        .selected(active)
+        .when(active, |button| button.primary())
 }
 
-/// 列表行：公司 + 岗位 + 阶段 + 日期。
+/// 列表行：公司 + 岗位 + 阶段 + 日期（组件库 ListItem，带 hover/选中样式）。
 pub fn application_row(
     application: &JobApplication,
     selected: bool,
     due: bool,
     id: impl Into<SharedString>,
-) -> gpui::Stateful<Div> {
+) -> ListItem {
     let id: SharedString = id.into();
     let stage = application.stage;
-    let date = application.applied_at.format("%m-%d").to_string();
-    div()
-        .id(id)
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap_3()
-        .px_3()
-        .py_2p5()
-        .border_b_1()
-        .border_color(theme::border())
-        .bg(if selected {
-            theme::accent_soft()
-        } else {
-            theme::panel()
-        })
-        .cursor_pointer()
-        .hover(|style| style.bg(theme::panel_alt()))
+    let date = model::format_date_short(application.applied_at, model::today());
+    ListItem::new(id)
+        .selected(selected)
+        .rounded(px(6.))
         .child(
             div()
                 .flex()
-                .flex_col()
-                .flex_1()
-                .gap_0p5()
-                .min_w(px(0.))
+                .flex_row()
+                .items_center()
+                .gap_3()
+                .w_full()
                 .child(
                     div()
                         .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap_2()
+                        .flex_col()
+                        .flex_1()
+                        .gap_0p5()
+                        .min_w(px(0.))
                         .child(
                             div()
-                                .text_sm()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(theme::text())
-                                .truncate()
-                                .child(application.company.clone()),
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(theme::text())
+                                        .truncate()
+                                        .child(application.company.clone()),
+                                )
+                                .when(due, |el| {
+                                    el.child(Tag::warning().rounded_full().child("待跟进"))
+                                }),
                         )
-                        .when(due, |el| {
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::muted())
+                                .truncate()
+                                .child(application.position.clone()),
+                        )
+                        .when(!application.tags.is_empty(), |el| {
                             el.child(
                                 div()
-                                    .px_1p5()
-                                    .py_0p5()
-                                    .rounded_full()
-                                    .bg(theme::warning_soft())
-                                    .text_xs()
-                                    .text_color(theme::warning())
-                                    .child("待跟进"),
+                                    .flex()
+                                    .flex_row()
+                                    .flex_wrap()
+                                    .gap_1()
+                                    .children(
+                                        application.tags.iter().take(3).map(|tag| tag_badge(tag)),
+                                    ),
                             )
                         }),
                 )
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(theme::muted())
-                        .truncate()
-                        .child(application.position.clone()),
-                )
-                .when(!application.tags.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .flex_wrap()
-                            .gap_1()
-                            .children(application.tags.iter().take(3).map(|tag| tag_badge(tag))),
-                    )
-                }),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .items_end()
-                .gap_1()
-                .child(stage_badge(stage))
-                .child(div().text_xs().text_color(theme::subtle()).child(date)),
+                        .flex()
+                        .flex_col()
+                        .items_end()
+                        .gap_1()
+                        .child(stage_badge(stage))
+                        .child(div().text_xs().text_color(theme::subtle()).child(date)),
+                ),
         )
 }
 

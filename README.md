@@ -14,8 +14,11 @@
 - 阶段流转：已投递 → 简历筛选 → 笔试/测评 → 一面 → 二面 → 三面/终面 → HR 面 → Offer。
 - 支持终止状态：已拒绝、已放弃；终止后仍保留此前到达过的阶段历史。
 - 每次阶段变更都会写入历史事件，用于精确计算“到达过哪些阶段”和周期天数。
+- 新增记录时如果直接选了后面的阶段，阶段事件按**投递日期**写入（补录不会把周期算成 0 天）。
+- 误点阶段可以**撤销上次阶段变更**（详情面板按钮），撤销后当前阶段回到上一条事件、`Offer 率`等口径同步回落。
+- 删除记录需要点击两次确认，删除后自动选中相邻记录。
 - 标签分类：支持自定义标签，也可以从已有标签中选择添加；支持按标签筛选。
-- 支持按公司/岗位/渠道/备注/标签搜索，按阶段和标签筛选。
+- 支持按公司/岗位/渠道/城市/备注/下一步动作/标签搜索，按阶段和标签筛选；筛选变化时会自动校正选中项，不会出现“详情面板里是被筛掉的记录”。
 - 支持新增、编辑、删除、推进阶段、手动切换阶段、清空数据、重置演示数据。
 
 ### 2. 仪表盘
@@ -45,32 +48,42 @@
   - macOS：`~/Library/Application Support/job-tracker/applications.json`
 - 也可以用环境变量 `JOB_TRACKER_DATA` 指定文件路径。
 - 首次运行会自动写入 18 条演示数据，便于直接查看统计效果。
-- 保存采用“先写临时文件再替换”的方式，尽量避免写入一半导致文件损坏。
-- **数据兼容旧版本**：旧数据文件没有 `tags` 字段时会自动补为空数组，并把 `version` 迁移到 2；旧的 v1 数据可以直接被新版读取。
+- 保存采用“先写临时文件再替换”的方式；临时文件名带进程号与序号，多个实例同时保存不会互相截断。
+- **坏数据不会被静默丢掉**：
+  - 数据文件整体解析失败时，先把原始内容原样备份成 `applications.bad-<时间戳>.json`，再逐条恢复还能解析的记录，
+    并在界面（toast + 设置页「数据体检」）与 `--report` 输出里说明跳过了几条坏记录；
+  - 这个场景下 `--report` 不会提示“运行 --seed”，图形界面也不会自动写入演示数据，避免覆盖还能人工修复的原始文件。
+- **覆盖性操作都有兜底**：重置演示数据 / 清空数据会先把当前数据备份成 `applications.reset-<时间戳>.json` /
+  `applications.clear-<时间戳>.json`；命令行 `--seed` / `--clear` 在已有数据时必须显式加 `--force`，加 `--force` 时同样会先自动备份。
+- **数据兼容旧版本**：数据格式为 `version 3`。加载旧文件时会自动迁移：
+  - 缺少 `tags` 字段 → 补为空数组；
+  - 缺少 `history` → 按投递日期补一条“创建投递记录”事件（否则漏斗第一行会凭空流失）；
+  - 标签自动去首尾空白、限制 24 字符、按“忽略大小写”去重。
 
 ### 5. 设置
 
 - 数据管理：查看数据文件路径、投递记录数、标签数、数据版本和文件大小；
-- **重置为演示数据** 和 **清空所有数据** 两个操作集中在设置页；
+- **重置为演示数据** 和 **清空所有数据** 两个操作集中在设置页，都需要点击两次确认，并会先自动备份现有数据；
+- **数据体检**：展示本次启动读取数据时发现的问题（文件损坏、跳过的坏记录、备份文件路径）；
 - 数据兼容说明、快捷键列表和构建信息。
 
 ---
 
 ## 界面截图
 
-仓库的 `docs/screenshots/` 目录保存了 Linux release 构建的实际运行截图（1280×820）：
+仓库的 `docs/screenshots/` 目录保存了实际运行截图（Linux + WSLg，1280×820）：
 
 | 页面 | 截图 |
 | --- | --- |
 | 仪表盘 | [dashboard.png](docs/screenshots/dashboard.png) |
 | 投递管理 | [applications.png](docs/screenshots/applications.png) |
 | 阶段统计 | [analytics.png](docs/screenshots/analytics.png) |
-| 新增投递表单（含标签分类） | [form.png](docs/screenshots/form.png) |
-| 添加自定义标签后的表单 | [form-tags.png](docs/screenshots/form-tags.png) |
-| 表单输入 | [form-typed.png](docs/screenshots/form-typed.png) |
-| 设置（数据管理、快捷键、关于） | [settings.png](docs/screenshots/settings.png) |
+| 新增投递（gpui-component 对话框） | [form.png](docs/screenshots/form.png) |
+| 编辑投递（含标签与阶段选择） | [form-tags.png](docs/screenshots/form-tags.png) |
+| 设置（数据管理、数据体检、快捷键） | [settings.png](docs/screenshots/settings.png) |
 
-> 截图来自 release 构建（`opt-level=2 + thin LTO + strip`），Linux 二进制约 18 MB，压缩后的 tar.gz 约 6.7 MB。
+> 截图为 v0.2.0 的界面（Linux + WSLg，1280×820），使用 gpui-component 组件库渲染。
+> release 构建（`opt-level=2 + thin LTO + strip`）的 Linux 二进制约 18 MB，压缩后的 tar.gz 约 6.7 MB。
 
 ---
 
@@ -80,6 +93,7 @@
 | --- | --- |
 | Rust 2024 | `edition = "2024"`，需要 Rust 1.85+ |
 | GPUI 0.2.2 | Zed 的 GPU 加速 UI 框架（crates.io 版本） |
+| gpui-component 0.5.1 | GPUI 的组件库（60+ 桌面组件）：按钮、输入框、对话框、通知、标签、进度条、图标…… |
 | Windows 后端 | GPUI 内置 DirectX 12 渲染 + DirectWrite 文本 |
 | Linux 后端 | Vulkan 渲染 + X11 / Wayland 窗口 |
 | macOS 后端 | Metal 渲染 + CoreText 文本 |
@@ -117,13 +131,14 @@ job-tracker/
     ├── demo.rs              # 演示数据
     └── ui/
         ├── mod.rs
-        ├── app.rs           # RootView：侧边栏、顶部栏、表单、事件处理
+        ├── app.rs           # RootView：侧边栏、顶部栏、对话框表单、事件处理
+        │                    #   以及负责渲染浮层的 AppShell
         ├── dashboard.rs     # 仪表盘页面
         ├── applications.rs  # 投递管理页面
         ├── analytics.rs     # 阶段统计页面
-        ├── components.rs    # 卡片、徽章、进度条、按钮等组件
-        ├── text_input.rs    # 支持 IME 中文输入的文本输入框
-        └── theme.rs         # 颜色与阶段配色
+        ├── settings.rs      # 设置页面（数据管理、数据体检、快捷键）
+        ├── components.rs    # 卡片、徽章、进度条、按钮等（基于 gpui-component 封装）
+        └── theme.rs         # 颜色与阶段配色（同时把配色灌进组件库主题）
 ```
 
 ---
@@ -154,7 +169,14 @@ cargo run -- --seed
 cargo run -- --clear
 ```
 
-这会写入一个空的 JSON 数据文件，下次启动显示空数据。也可以使用界面侧边栏底部的 **“清空所有数据”** 按钮（需要点击两次确认）。
+这会写入一个空的 JSON 数据文件，下次启动显示空数据。也可以使用界面设置页的 **“清空所有数据”** 按钮（需要点击两次确认）。
+
+> 两个命令在数据文件里已有记录时都会**拒绝执行**并返回退出码 1，避免脚本或手滑覆盖真实数据：
+
+```bash
+cargo run -- --seed  --force   # 先自动备份成 applications.backup-<时间戳>.json，再写入演示数据
+cargo run -- --clear --force   # 先自动备份，再写入空数据文件
+```
 
 如果想手动删除数据文件：
 
@@ -217,11 +239,11 @@ xcode-select --install               # 首次需要
 ./scripts/package-macos.sh --sign "Developer ID Application: Your Name (TEAMID)"
 ```
 
-推送形如 `v0.1.0` 的 tag 后，`.github/workflows/release.yml` 会在 Windows、Linux 和 macOS 上自动构建，并把 ZIP / tar.gz / .deb / dmg / SHA256 上传到 GitHub Release：
+推送形如 `v0.2.0` 的 tag 后，`.github/workflows/release.yml` 会在 Windows、Linux 和 macOS 上自动构建，并把 ZIP / tar.gz / .deb / dmg / SHA256 上传到 GitHub Release：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ---
@@ -326,6 +348,53 @@ ln -sf /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0
 
 若系统中文字体缺失，安装 `google-noto-sans-cjk-fonts`（Fedora）或 `fonts-noto-cjk`（Ubuntu）。
 
+### WSLg 上必须走 X11 后端
+
+**WSLg 的 Weston 只提供 `xdg_wm_base` v1**，而 GPUI 0.2.2 的 Wayland 后端要求 v2..=v5，
+所以在 WSLg 里直接 `cargo run` 会 panic：
+
+```text
+panicked at gpui-.../wayland/client.rs:151:
+called `Result::unwrap()` on an `Err` value: UnsupportedVersion
+```
+
+把 `WAYLAND_DISPLAY` 置空即可让 GPUI 退回 X11 后端（XWayland 工作正常）：
+
+```bash
+WAYLAND_DISPLAY= cargo run
+```
+
+### 无 root（最小化 Fedora / WSL）的本地开发环境
+
+如果这台机器没有 sudo、又缺 `libxcb` / `libxkbcommon-x11` / Vulkan / fontconfig，
+可以像本仓库当前的工作副本那样用一个**本地原生库前缀**（`/.native`，已在 `.gitignore` 里）：
+
+1. 用 `dnf download` 拉 RPM（不需要 root），再用 `rpm2archive -n <rpm> | tar -xf - -C .native/root` 解包，
+   需要的包大致是：`libxcb libXau libXdmcp libxkbcommon libxkbcommon-x11 libX11 libX11-xcb libX11-common
+   vulkan-loader mesa-vulkan-drivers llvm-libs libpng harfbuzz graphite2 fontconfig freetype
+   libdrm libxshmfence libwayland-client libdisplay-info spirv-tools-libs dejavu-sans-fonts xwininfo xwd`；
+2. 在 `.native/root/usr/lib64` 里给 `-l` 用的库名建软链（`libxcb.so -> libxcb.so.1` 等）；
+3. 把 `mesa` 的 ICD 清单里的 `library_path` 改成前缀内的绝对路径；
+4. 由于本机没有 `/etc/fonts/fonts.conf`，自带一份 `fonts.conf` 指向 `/usr/share/fonts` 与前缀里的 DejaVu 字体；
+5. 把上面这些写进本地的 `.cargo/config.toml`（同样已被 `.gitignore` 忽略）：
+
+```toml
+[build]
+rustflags = ["-L", "<repo>/.native/root/usr/lib64",
+             "-C", "link-arg=-Wl,-rpath,<repo>/.native/root/usr/lib64"]
+
+[env]  # 桌面会话已有同名变量，所以要 force = true
+LD_LIBRARY_PATH      = { value = ".native/root/usr/lib64", relative = true, force = true }
+VK_ICD_FILENAMES     = { value = ".native/root/usr/share/vulkan/icd.d/lvp_icd.x86_64.json", relative = true, force = true }
+FONTCONFIG_FILE      = { value = ".native/root/etc-fonts.conf", relative = true, force = true }
+XLOCALEDIR           = { value = ".native/root/usr/share/X11/locale", relative = true, force = true }
+MESA_SHADER_CACHE_DIR = { value = "/tmp/mesa-cache", force = true }
+WAYLAND_DISPLAY      = { value = "", force = true }   # 见上一节
+```
+
+这样 `cargo run` 就能直接开窗口（软件渲染；若 `/dev/dxg` 可用，把 ICD 换成 `dzn_icd.x86_64.json` 即可走 GPU）。
+有 sudo 的机器上按上面的 `dnf install` 装系统包即可，不需要 `.native`，删掉 `.cargo/config.toml` 也不影响。
+
 ---
 
 ## 快捷键
@@ -341,6 +410,42 @@ ln -sf /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0
 | `Ctrl + C / X / V`（macOS：`Cmd + ...`） | 文本输入框复制/剪切/粘贴 |
 
 > 快捷键使用 GPUI 的 `secondary` 修饰键：Windows/Linux 上为 Ctrl，macOS 上为 Command。
+> 文本输入框内部的编辑快捷键（全选/复制/剪切/粘贴/撤销/按词移动等）由 gpui-component 的
+> `Input` 组件自己处理，应用只注册上面这些全局快捷键。
+
+---
+
+## UI 组件库（gpui-component）
+
+界面基于 [gpui-component](https://github.com/longbridge/gpui-component) 构建：
+
+| 界面元素 | 使用的组件 |
+| --- | --- |
+| 新增/编辑投递表单 | `Dialog`（自带遮罩、ESC 关闭、焦点管理、底部按钮）+ `Input` |
+| 顶部搜索框 | `Input`（前置搜索图标、一键清空） |
+| 所有按钮 | `Button`（primary / danger / ghost / 图标按钮 / 尺寸变体） |
+| 阶段与标签 | `Tag`（阶段保留原配色）、`Input` + 标签快捷添加按钮 |
+| 记录列表 | `ListItem`（统一的 hover / 选中态） |
+| 漏斗进度条 | `Progress` |
+| 操作反馈 | `Notification`（右上角浮层，自动消失，无需自己写定时器） |
+| 数据体检提示 | `Alert` |
+| 侧边栏与标签页图标 | `Icon` + `IconName`（Lucide 图标，`gpui-component-assets`） |
+
+集成时踩到的几个点，已经在代码里处理：
+
+1. **版本必须锁 `0.5.1`**：只有它依赖 crates.io 的 `gpui ^0.2.2`，与本项目一致；
+   0.6.x 换成了 `gpui-base`，类型无法与本项目的 `gpui` 互通。
+2. **`gui` feature 隔离**：`gpui-component` 会打开 gpui 的默认 feature（x11/wayland/font-kit），
+   所以它被设为可选依赖并挂在 `gui` 上，`ui` 模块整体 `#[cfg(feature = "gui")]`，
+   这样 `--no-default-features` 的无头构建/测试不会被拖进图形依赖。
+3. **必须注册资源**：图标是 SVG，需要 `Application::new().with_assets(gpui_component_assets::Assets)`，
+   否则 `Icon` 什么都不显示。
+4. **浮层要自己渲染**：`gpui_component::Root` 只渲染内嵌视图，`Dialog`/`Sheet`/`Notification`
+   需要应用在根视图外层调用 `Root::render_*_layer(window, cx)`；而表单内容又要读 `RootView`，
+   直接在 `RootView::render` 里渲染会「自己读自己」而 panic，因此多包了一层 `AppShell`。
+5. **主题对接**：组件库默认是 shadcn 中性色（主色接近纯黑），`theme::install_component_theme`
+   把本项目的石板灰 + 蓝色主色灌进组件库主题，避免两套皮肤混用；注意库里的
+   `background` 指的是「窗口/卡片底色」（白色），不是页面的浅灰底。
 
 ---
 
@@ -348,14 +453,17 @@ ln -sf /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0
 
 - **有回复率** = 到达“简历筛选”及之后阶段的投递数 / 总投递数。
 - **面试率** = 到达“一面”及之后阶段的投递数 / 总投递数。
-- **Offer 率** = 拿到过 Offer 的投递数 / 总投递数。
+- **Offer 率** = **曾**拿到过 Offer 的投递数 / 总投递数（拿到后又放弃的记录仍计入）。
 - **到达人数**：历史事件中出现过该阶段，或当前阶段在该阶段及之后，即算“到达”。
 - **环节留存** = 本阶段到达人数 / 上一阶段到达人数。
 - **环节流失** = 1 - 环节留存。
-- **平均面试等待** = 所有“第一次进入面试”事件的（面试日期 - 投递日期）平均值。
-- **平均 Offer 周期** = 所有“第一次拿到 Offer”事件的（Offer 日期 - 投递日期）平均值。
+- **平均面试等待** = 所有“第一次进入面试”事件的（面试日期 - 投递日期）平均值，只统计已经面试过的记录。
+- **平均 Offer 周期** = 所有“第一次拿到 Offer”事件的（Offer 日期 - 投递日期）平均值，只统计已经拿到 Offer 的记录。
+- **日期倒挂的记录**（阶段事件早于投递日期）不参与上面两个平均值，只在界面和 `--report` 里单独提示，不会被悄悄按 0 天计入。
+- **未来日期**：投递日期晚于今天的记录不计入“最近 30 天”，也不进入月度趋势（表单本身会拒绝未来日期），`--report` 会单列条数。
 - **月度趋势**：按投递日期统计每月新增投递数；面试/Offer 按对应事件日期统计。
-- **渠道效果**：按投递渠道分组统计投递数、面试数、Offer 数与 Offer 率。
+- **渠道效果**：按投递渠道分组统计投递数、面试数、Offer 数与 Offer 率；分组时忽略首尾空白与大小写，空白渠道与手填“未填写”合并。
+- **性能**：统计数据在数据变化后重算一次并缓存，界面每帧复用，不再逐帧重复计算漏斗与趋势。
 
 ---
 
@@ -363,7 +471,7 @@ ln -sf /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0
 
 ```json
 {
-  "version": 1,
+  "version": 3,
   "applications": [
     {
       "id": "0f1e2d3c-...",
@@ -406,26 +514,42 @@ cargo test --no-default-features
 - **Linux (X11/Wayland)**：安装 `libxkbcommon`、`libvulkan`、fontconfig 等依赖后验证图形后端，并额外执行一次无头文本报告 smoke test；
 - **macOS (Metal)**：验证 Metal / CoreText 后端，并执行一次 `package-macos.sh` 打包 smoke test。
 
-当前包含 12 个单元测试：
+当前包含 27 个单元测试：
+
+**统计口径**
 
 - 总览指标计数正确；
-- 漏斗到达人数单调不增；
-- 月度趋势固定返回 6 个月；
+- 漏斗到达人数单调不增、`previous_reached` 逐级衔接；
+- 月度趋势固定返回 6 个月，且跨年分桶正确（12 月 / 1 月边界）；
 - 平均面试等待天数计算正确；
-- 演示数据一致性（含标签非空）；
-- 存储读写往返；
-- 空数据文件往返（`--clear` 场景）；
-- 缺失文件加载为空数据；
-- 旧版本数据（没有 `tags` 字段）自动迁移到 version 2；
-- 标签收集与计数（大小写去重）；
-- 按标签筛选（大小写不敏感）；
-- 标签规范化（去空白、长度限制）。
+- 日期倒挂的记录被排除在平均值之外、同时被计数上报；
+- 未来投递日期不计入最近 30 天，且"月度合计 + 未来条数 = 总数"；
+- 渠道分组忽略大小写与首尾空白，空白渠道与"未填写"合并；
+- 空数据下不 panic、比率与漏斗都退化为 0；
+- 演示数据一致性（含标签非空）。
+
+**数据模型与持久化**
+
+- 存储读写往返、空数据文件往返（`--clear` 场景）、缺失文件加载为空数据且不报损坏；
+- 旧版本数据（没有 `tags` / `history`）自动迁移到 version 3，history 按投递日期补齐；
+- 损坏文件先备份再逐条恢复（好记录保留、坏记录计数、备份内容与原文件逐字节一致）；
+- 完全无法解析的文件不会被静默覆盖；
+- 四个线程并发保存同一路径不产生损坏文件、也不残留临时文件；
+- 保存时自动创建多级父目录。
+
+**模型与交互逻辑**
+
+- 标签收集与计数（忽略大小写，含 `Ä`/`ä` 这类非 ASCII 大小写）；
+- 标签规范化（去空白、24 字符上限、迁移时去重）；
+- 按标签筛选与标签列表口径一致（列表里能点到的标签一定能筛出对应记录）；
+- 搜索覆盖备注与"下一步动作"；
+- 撤销最后一次阶段变更可以回退当前阶段与 `Offer` 口径，且不会把记录退回"没有历史"的状态。
 
 ---
 
 ## Git 工作流
 
-项目已经初始化为 Git 仓库，默认分支 `main`，当前版本 tag 为 `v0.1.0`。
+项目已经初始化为 Git 仓库，默认分支 `main`，发布时使用形如 `v0.2.0` 的 tag（当前版本 `0.2.0`，见 [CHANGELOG.md](CHANGELOG.md)）。
 
 常用命令：
 
@@ -441,10 +565,10 @@ git log --oneline --decorate
 ```bash
 git remote add origin <your-repo-url>
 git push -u origin main
-git push origin v0.1.0
+git push origin v0.2.0
 ```
 
-推送形如 `v0.1.0` 的 tag 会触发 `.github/workflows/release.yml`，自动在 Windows/Linux 上构建并创建 GitHub Release：
+推送形如 `v0.2.0` 的 tag 会触发 `.github/workflows/release.yml`，自动在 Windows/Linux 上构建并创建 GitHub Release：
 
 ```bash
 git tag v0.2.0

@@ -9,9 +9,8 @@ use crate::{
 };
 
 impl RootView {
-    pub fn render_dashboard(&self, cx: &Context<Self>) -> impl IntoElement {
+    pub fn render_dashboard(&self, analytics: &Analytics, cx: &Context<Self>) -> impl IntoElement {
         let today = model::today();
-        let analytics = Analytics::compute(&self.store, today);
         let overview = &analytics.overview;
         let follow_ups = analytics.follow_ups(&self.store, today, 6);
         let activities = analytics.recent_activity(&self.store, 8);
@@ -151,7 +150,7 @@ impl RootView {
                                     };
                                     let date = application
                                         .next_action_at
-                                        .map(|date| date.format("%m-%d").to_string())
+                                        .map(|date| model::format_date_short(date, today))
                                         .unwrap_or_else(|| "--".to_string());
                                     let overdue =
                                         application.next_action_at.is_some_and(|date| date < today);
@@ -285,7 +284,7 @@ impl RootView {
                                     let company = activity.company.clone();
                                     let position = activity.position.clone();
                                     let stage = activity.stage;
-                                    let date = activity.at.format("%m-%d").to_string();
+                                    let date = model::format_date_short(activity.at, today);
                                     div()
                                         .id(SharedString::from(format!("activity-{}", id)))
                                         .flex()
