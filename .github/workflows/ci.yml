@@ -44,3 +44,19 @@ jobs:
         run: cargo test --all-targets
       - name: Headless report smoke test
         run: cargo run --no-default-features -- --seed && cargo run --no-default-features -- --report
+
+  macos:
+    name: macOS (Metal)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: cargo check --all-targets
+      - name: Test
+        run: cargo test --all-targets
+      - name: Build release
+        run: cargo build --release
+      - name: Package smoke test
+        run: ./scripts/package-macos.sh --skip-build --no-dmg

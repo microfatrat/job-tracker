@@ -186,24 +186,62 @@ AppImage 对系统 Vulkan 驱动、fontconfig 和字体有依赖，GPUI 应用�
 
 ---
 
-## 4. macOS 打包（简要）
+## 4. macOS 打包
+
+前提：安装 Xcode Command Line Tools：
 
 ```bash
-cargo build --release
+xcode-select --install
 ```
 
-生成 `.app` 可以：
-
-1. 使用 `cargo-bundle`：
+一键打包：
 
 ```bash
-cargo install cargo-bundle
-cargo bundle --release
+./scripts/package-macos.sh
 ```
 
-2. 或手动创建 `JobFlow.app/Contents/MacOS/`，把二进制放进去，并编写 `Info.plist`。
+脚本会：
 
-正式发布还需要 Apple Developer ID 签名与 notarization。
+1. 执行 `cargo build --release`；
+2. 生成 `dist/JobFlow.app`（包含 `Contents/MacOS/job-tracker` 和 `Contents/Info.plist`）；
+3. 生成 `dist/job-tracker-<version>-macos-<arch>.zip`；
+4. 如果系统有 `hdiutil`，还会生成 `.dmg`（内含 Applications 快捷方式）；
+5. 生成对应的 SHA256 校验和；
+6. 如果找到 `codesign`，默认做 ad-hoc 签名，方便本机运行。
+
+常用参数：
+
+```bash
+./scripts/package-macos.sh --skip-build
+./scripts/package-macos.sh --no-dmg
+./scripts/package-macos.sh --no-default-features
+./scripts/package-macos.sh --sign "Developer ID Application: Your Name (TEAMID)"
+```
+
+架构：在 Apple Silicon 上生成 `arm64` 包，在 Intel Mac 上生成 `x86_64` 包。
+
+正式发布：
+
+1. 使用 Developer ID 证书签名：
+
+   ```bash
+   ./scripts/package-macos.sh --sign "Developer ID Application: Your Name (TEAMID)"
+   ```
+
+2. 使用 `notarytool` 提交公证：
+
+   ```bash
+   xcrun notarytool submit dist/job-tracker-<version>-macos-<arch>.dmg \
+     --apple-id "you@example.com" --team-id TEAMID --password "app-specific-password" --wait
+   ```
+
+3. 装订公证结果：
+
+   ```bash
+   xcrun stapler staple dist/job-tracker-<version>-macos-<arch>.dmg
+   ```
+
+如果没有 Apple Developer 账号，生成的 zip/dmg 可以在本机运行，但分发给别人时 Gatekeeper 会提示未验证。
 
 ---
 
@@ -214,7 +252,8 @@ cargo bundle --release
 - 触发条件：推送形如 `v0.1.0` 的 tag；
 - Windows job：构建 release、生成便携 ZIP（可选 Inno Setup 安装包）；
 - Linux job：安装图形依赖、构建 release、生成 tar.gz 和 .deb；
-- 最后把所有 `dist/*` 上传到对应的 GitHub Release。
+- macOS job：构建 release、生成 `JobFlow.app`、zip 和 dmg；
+- 最后把所有 `dist/*`（zip / tar.gz / deb / dmg / sha256）上传到对应的 GitHub Release。
 
 发布流程：
 
