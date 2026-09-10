@@ -51,10 +51,6 @@ impl RootView {
                         format!("{} 条", self.store.len()),
                     ))
                     .child(field_row("标签数量", format!("{} 个", tags.len())))
-                    .child(field_row(
-                        "数据版本",
-                        format!("version {}", self.store.version),
-                    ))
                     .child(field_row("文件大小", file_size_text))
                     .child(divider())
                     .child(
@@ -144,43 +140,6 @@ impl RootView {
             .child(
                 card()
                     .p_5()
-                    .child(card_title("数据兼容", "旧版本数据可以直接使用"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme::text())
-                            .child(format!(
-                                "当前数据格式为 version {}。",
-                                crate::model::CURRENT_VERSION
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::muted())
-                            .mt_1()
-                            .child(
-                                "旧数据会按需自动迁移：缺少 tags 补空数组、缺少阶段历史按投递日期补一条起始事件、标签自动去空白与去重。",
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::muted())
-                            .mt_1()
-                            .child("标签最长 24 个字符，重复标签会自动忽略（忽略大小写）。"),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::muted())
-                            .mt_1()
-                            .child("数据文件解析失败时会先备份为 .bad-时间戳.json，再逐条恢复可解析的记录。"),
-                    ),
-            )
-            .child(
-                card()
-                    .p_5()
                     .child(card_title(
                         "快捷键",
                         "secondary = Windows/Linux 的 Ctrl，macOS 的 Command",
@@ -205,10 +164,6 @@ impl RootView {
                         } else {
                             "release"
                         },
-                    ))
-                    .child(field_row(
-                        "数据格式",
-                        format!("version {}", self.store.version),
                     )),
             )
     }
