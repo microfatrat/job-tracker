@@ -57,7 +57,7 @@ strip = "symbols"
 
 1. 自动搜索 Windows SDK 中的 `fxc.exe` 并设置 `GPUI_FXC_PATH`（release 构建需要它；找不到时会给出明确提示）；
 2. 执行 `cargo build --release`；
-3. 在 `dist/` 下生成类似 `job-tracker-0.1.0-windows-x86_64.zip` 的压缩包；
+3. 在 `dist/` 下生成类似 `job-tracker-0.2.0-windows-x86_64.zip` 的压缩包；
 4. 压缩包内包含 `job-tracker.exe`、`README.md`、`LICENSE`。
 
 > 如果只想做 debug 版本，可以直接 `cargo build`，产物在 `target/debug/job-tracker.exe`；debug 构建不需要 `fxc.exe`。
@@ -98,7 +98,7 @@ cargo build --release --features windows-gui
 或者手动执行：
 
 ```powershell
-iscc /DMyAppVersion=0.1.0 packaging\windows\job-tracker.iss
+iscc /DMyAppVersion=0.2.0 packaging\windows\job-tracker.iss
 ```
 
 脚本模板在 `packaging/windows/job-tracker.iss`，默认安装到 `Program Files\JobFlow`，并创建开始菜单和桌面快捷方式。
@@ -137,7 +137,7 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a target\
 ./scripts/package-linux.sh
 ```
 
-产物：`dist/job-tracker-0.1.0-linux-x86_64.tar.gz`，内含二进制、`README.md`、`LICENSE`。
+产物：`dist/job-tracker-0.2.0-linux-x86_64.tar.gz`，内含二进制、`README.md`、`LICENSE`。
 
 如果机器没有图形依赖，可以只做无头版本：
 
@@ -151,7 +151,7 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a target\
 ./scripts/package-linux.sh --deb
 ```
 
-脚本使用 `dpkg-deb` 生成 `dist/job-tracker_0.1.0_amd64.deb`，并在 control 文件中声明运行依赖：
+脚本使用 `dpkg-deb` 生成 `dist/job-tracker_0.2.0_amd64.deb`，并在 control 文件中声明运行依赖：
 
 ```text
 libxkbcommon0, libxkbcommon-x11-0, libvulkan1,
@@ -162,7 +162,7 @@ libxcb1, libx11-xcb1, libxshmfence1
 安装：
 
 ```bash
-sudo dpkg -i dist/job-tracker_0.1.0_amd64.deb
+sudo dpkg -i dist/job-tracker_0.2.0_amd64.deb
 sudo apt-get -f install   # 如果缺少依赖
 ```
 
@@ -249,7 +249,7 @@ xcode-select --install
 
 仓库里已经包含 `.github/workflows/release.yml`：
 
-- 触发条件：推送形如 `v0.1.0` 的 tag；
+- 触发条件：推送形如 `v0.2.0` 的 tag；
 - Windows job：构建 release、生成便携 ZIP（可选 Inno Setup 安装包）；
 - Linux job：安装图形依赖、构建 release、生成 tar.gz 和 .deb；
 - macOS job：构建 release、生成 `JobFlow.app`、zip 和 dmg；
@@ -261,8 +261,8 @@ xcode-select --install
 # 1. 修改 Cargo.toml 版本号
 # 2. 提交
 git add .
-git commit -m "release: v0.1.0"
-git tag v0.1.0
+git commit -m "release: v0.2.0"
+git tag v0.2.0
 git push origin main --tags
 ```
 
@@ -276,7 +276,7 @@ git push origin main --tags
 
 ```toml
 [package]
-version = "0.1.0"
+version = "0.2.0"
 ```
 
 建议使用 `cargo-edit` 统一修改：

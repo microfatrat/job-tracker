@@ -21,6 +21,11 @@ pub struct Overview {
     pub stale: usize,
     pub applied_last_30_days: usize,
     pub applied_this_month: usize,
+    /// 投递日期晚于今天的记录数（手改数据或旧数据里才可能出现），
+    /// 这类记录不计入“最近 30 天”，但会单列出来提示用户。
+    pub future_applied: usize,
+    /// 存在早于投递日期的阶段事件的记录数（补录/日期写错）。
+    pub chronology_issues: usize,
     pub response_rate: f32,
     pub interview_rate: f32,
     pub offer_rate: f32,
@@ -34,6 +39,8 @@ pub struct StageStat {
     pub stage: Stage,
     /// 到达过该阶段（含之后阶段）的投递数。
     pub reached: usize,
+    /// 上一阶段的到达人数（第一个阶段为总投递数）。
+    pub previous_reached: usize,
     /// 当前正处于该阶段的投递数。
     pub current: usize,
     /// 到达率：reached / total。
@@ -94,13 +101,16 @@ impl Analytics {
         });
         let interviewed = count!(|application| application.reached(Stage::Interview1));
         let offers = count!(|application| application.is_offer());
+        // 日期倒挂（事件早于投递）的记录不参与平均周期计算，只计数上报。
         let interview_days: Vec<i64> = applications
             .iter()
             .filter_map(|application| application.days_to_first_interview())
+            .filter(|days| *days >= 0)
             .collect();
         let offer_days: Vec<i64> = applications
             .iter()
             .filter_map(|application| application.days_to_offer())
+            .filter(|days| *days >= 0)
             .collect();
         let this_month = applications
             .iter()
@@ -109,9 +119,17 @@ impl Analytics {
                     && application.applied_at.month() == today.month()
             })
             .count();
+        // 未来日期不计入“最近 30 天”，否则它会被算成刚投递却不出现在任何月度桶里。
         let last_30_days = applications
             .iter()
-            .filter(|application| application.applied_at >= today - Duration::days(30))
+            .filter(|application| {
+                application.applied_at <= today
+                    && application.applied_at >= today - Duration::days(30)
+            })
+            .count();
+        let future_applied = applications
+            .iter()
+            .filter(|application| application.applied_at > today)
             .count();
 
         let overview = Overview {
@@ -129,6 +147,8 @@ impl Analytics {
             }),
             applied_last_30_days: last_30_days,
             applied_this_month: this_month,
+            future_applied,
+            chronology_issues: count!(|application| application.has_chronology_issue()),
             response_rate: ratio(responded, total),
             interview_rate: ratio(interviewed, total),
             offer_rate: ratio(offers, total),
@@ -137,7 +157,7 @@ impl Analytics {
         };
 
         let mut stages = Vec::with_capacity(Stage::PROGRESS.len());
-        let mut previous_reached = total;
+        let mut previous = total;
         for stage in Stage::PROGRESS {
             let reached = applications
                 .iter()
@@ -147,20 +167,21 @@ impl Analytics {
                 .iter()
                 .filter(|application| application.stage == stage)
                 .count();
-            let step_conversion = ratio(reached, previous_reached);
+            let step_conversion = ratio(reached, previous);
             stages.push(StageStat {
                 stage,
                 reached,
+                previous_reached: previous,
                 current,
                 conversion: ratio(reached, total),
                 step_conversion,
-                drop_off: if previous_reached == 0 {
+                drop_off: if previous == 0 {
                     0.0
                 } else {
                     1.0 - step_conversion
                 },
             });
-            previous_reached = reached;
+            previous = reached;
         }
 
         let months = monthly_stats(applications, today, 6);
@@ -190,7 +211,7 @@ impl Analytics {
                 })
             })
             .collect();
-        activities.sort_by(|a, b| b.at.cmp(&a.at));
+        activities.sort_by_key(|activity| std::cmp::Reverse(activity.at));
         activities.truncate(limit);
         activities
     }
@@ -306,26 +327,32 @@ fn previous_month(date: NaiveDate) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, 1).unwrap_or(date)
 }
 
+/// 按渠道分组统计。
+///
+/// 分组键做「去首尾空白 + Unicode 小写」归一，所以
+/// `BOSS直聘` / `boss直聘` / `Boss直聘 ` 会合并成一组（展示名取第一次出现的写法）；
+/// 渠道留空（含纯空格）与手填的「未填写」合并为“未填写”一组。
 fn channel_stats(applications: &[JobApplication]) -> Vec<ChannelStat> {
+    const UNKNOWN: &str = "未填写";
+
     let mut grouped: BTreeMap<String, ChannelStat> = BTreeMap::new();
     for application in applications {
-        let channel = if application.channel.trim().is_empty() {
-            "未填写".to_string()
+        let trimmed = application.channel.trim();
+        let (key, display) = if trimmed.is_empty() {
+            (UNKNOWN.to_lowercase(), UNKNOWN.to_string())
         } else {
-            application.channel.trim().to_string()
+            (trimmed.to_lowercase(), trimmed.to_string())
         };
-        let entry = grouped
-            .entry(channel.clone())
-            .or_insert_with(|| ChannelStat {
-                channel,
-                total: 0,
-                responded: 0,
-                interviews: 0,
-                offers: 0,
-                response_rate: 0.0,
-                interview_rate: 0.0,
-                offer_rate: 0.0,
-            });
+        let entry = grouped.entry(key).or_insert_with(|| ChannelStat {
+            channel: display,
+            total: 0,
+            responded: 0,
+            interviews: 0,
+            offers: 0,
+            response_rate: 0.0,
+            interview_rate: 0.0,
+            offer_rate: 0.0,
+        });
         entry.total += 1;
         if application
             .max_reached_index()
@@ -430,5 +457,133 @@ mod tests {
         let analytics = Analytics::compute(&store, date(2026, 3, 10));
         // A: 10 天，C: 10 天
         assert_eq!(analytics.overview.avg_days_to_interview, Some(10.0));
+    }
+
+    #[test]
+    fn stage_stats_carry_previous_reached() {
+        let store = store_with_samples();
+        let analytics = Analytics::compute(&store, date(2026, 3, 10));
+        assert_eq!(analytics.stages[0].previous_reached, analytics.overview.total);
+        for window in analytics.stages.windows(2) {
+            assert_eq!(window[1].previous_reached, window[0].reached);
+        }
+    }
+
+    #[test]
+    fn channels_are_grouped_case_insensitively() {
+        let mut store = Store::default();
+        for (name, channel) in [
+            ("A", "BOSS直聘"),
+            ("B", "boss直聘"),
+            ("C", " Boss直聘 "),
+            ("D", ""),
+            ("E", "   "),
+            ("F", "未填写"),
+        ] {
+            let mut application = JobApplication::new(name, "工程师", date(2026, 1, 1));
+            application.channel = channel.to_string();
+            store.add(application);
+        }
+
+        let analytics = Analytics::compute(&store, date(2026, 3, 10));
+        assert_eq!(analytics.channels.len(), 2, "{:?}", analytics.channels);
+        let boss = analytics
+            .channels
+            .iter()
+            .find(|channel| channel.channel.eq_ignore_ascii_case("boss直聘"))
+            .expect("大小写不同的写法应合并");
+        assert_eq!(boss.total, 3);
+        let unknown = analytics
+            .channels
+            .iter()
+            .find(|channel| channel.channel == "未填写")
+            .expect("空白渠道应归入未填写");
+        assert_eq!(unknown.total, 3);
+        assert_eq!(
+            analytics.channels.iter().map(|c| c.total).sum::<usize>(),
+            analytics.overview.total
+        );
+    }
+
+    #[test]
+    fn future_dated_applications_are_reported_separately() {
+        let mut store = Store::default();
+        store.add(JobApplication::new("今天", "P", date(2026, 3, 10)));
+        store.add(JobApplication::new("昨天", "P", date(2026, 3, 9)));
+        store.add(JobApplication::new("下个月", "P", date(2026, 4, 20)));
+
+        let analytics = Analytics::compute(&store, date(2026, 3, 10));
+        assert_eq!(analytics.overview.total, 3);
+        assert_eq!(analytics.overview.future_applied, 1);
+        assert_eq!(
+            analytics.overview.applied_last_30_days, 2,
+            "未来日期不该被算成“最近 30 天投递”"
+        );
+        let month_sum: usize = analytics.months.iter().map(|month| month.applied).sum();
+        assert_eq!(month_sum + analytics.overview.future_applied, analytics.overview.total);
+    }
+
+    #[test]
+    fn chronology_issues_are_excluded_from_averages_but_counted() {
+        let mut store = Store::default();
+        let mut broken = JobApplication::new("倒挂公司", "P", date(2026, 3, 10));
+        broken.set_stage(Stage::Interview1, date(2026, 3, 1), "日期写错");
+        store.add(broken);
+
+        let analytics = Analytics::compute(&store, date(2026, 3, 10));
+        assert_eq!(analytics.overview.chronology_issues, 1);
+        assert_eq!(
+            analytics.overview.avg_days_to_interview, None,
+            "负数天数不应悄悄按 0 参与平均"
+        );
+
+        let mut healthy = JobApplication::new("正常公司", "P", date(2026, 3, 1));
+        healthy.set_stage(Stage::Interview1, date(2026, 3, 6), "一面");
+        store.add(healthy);
+        let analytics = Analytics::compute(&store, date(2026, 3, 10));
+        assert_eq!(analytics.overview.avg_days_to_interview, Some(5.0));
+        assert_eq!(analytics.overview.chronology_issues, 1);
+    }
+
+    #[test]
+    fn empty_store_stays_safe() {
+        let analytics = Analytics::compute(&Store::default(), date(2026, 3, 10));
+        assert_eq!(analytics.overview.total, 0);
+        assert_eq!(analytics.overview.offer_rate, 0.0);
+        assert_eq!(analytics.overview.future_applied, 0);
+        assert_eq!(analytics.overview.chronology_issues, 0);
+        assert_eq!(analytics.months.len(), 6);
+        assert_eq!(analytics.stages.len(), 8);
+        assert_eq!(analytics.stages[0].previous_reached, 0);
+        assert_eq!(analytics.stages[0].drop_off, 0.0);
+    }
+
+    #[test]
+    fn month_buckets_handle_year_boundary() {
+        let mut store = Store::default();
+        store.add(JobApplication::new("去年末", "P", date(2025, 12, 31)));
+        store.add(JobApplication::new("今年初", "P", date(2026, 1, 1)));
+
+        let analytics = Analytics::compute(&store, date(2026, 1, 15));
+        assert_eq!(analytics.months.first().unwrap().key, "2025-08");
+        assert_eq!(analytics.months.last().unwrap().key, "2026-01");
+        assert_eq!(
+            analytics
+                .months
+                .iter()
+                .find(|month| month.key == "2025-12")
+                .unwrap()
+                .applied,
+            1
+        );
+        assert_eq!(
+            analytics
+                .months
+                .iter()
+                .find(|month| month.key == "2026-01")
+                .unwrap()
+                .applied,
+            1
+        );
     }
 }

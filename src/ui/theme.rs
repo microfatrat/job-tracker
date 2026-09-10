@@ -1,6 +1,6 @@
 //! 统一的颜色与视觉风格。
 
-use gpui::{Hsla, rgb};
+use gpui::{App, Hsla, px, rgb};
 
 use crate::model::Stage;
 
@@ -173,4 +173,82 @@ pub fn rate_color(rate: f32) -> Hsla {
     } else {
         danger()
     }
+}
+
+/// 把本项目的配色灌进 `gpui-component` 的主题。
+///
+/// 组件库自带的是 shadcn 中性色（主色接近纯黑），直接混用会和本项目的
+/// 石板灰 + 蓝色主色打架。这里把两边的语义色对齐，之后组件库的
+/// Button / Tag / Input / ListItem / Progress 与自绘部分就是同一套皮肤。
+pub fn install_component_theme(cx: &mut App) {
+    use gpui_component::Theme;
+
+    let theme = Theme::global_mut(cx);
+
+    // 基础排版：桌面端数据密集型界面，比默认的 16px 更紧凑一些。
+    theme.font_size = px(14.);
+    theme.radius = px(6.);
+    theme.radius_lg = px(10.);
+    theme.shadow = true;
+
+    let c = &mut theme.colors;
+    // 组件库里的 background 指的是「窗口/卡片底色」（shadcn 默认是纯白），
+    // 不是我们页面用的浅灰底；弄反了对话框会变成灰底。
+    c.background = panel();
+    c.foreground = text();
+    c.border = border();
+    c.input = panel();
+    c.caret = text();
+    c.ring = accent();
+    c.selection = accent_soft();
+    c.popover = panel();
+    c.popover_foreground = text();
+
+    c.primary = accent();
+    c.primary_foreground = rgb(0xffffff).into();
+    c.primary_hover = rgb(0x1d4ed8).into();
+    c.primary_active = rgb(0x1e40af).into();
+
+    c.secondary = panel();
+    c.secondary_foreground = text();
+    c.secondary_hover = panel_alt();
+    c.secondary_active = slate_soft();
+
+    c.accent = accent_soft();
+    c.accent_foreground = accent();
+
+    c.muted = panel_alt();
+    c.muted_foreground = muted();
+
+    c.danger = danger();
+    c.danger_foreground = rgb(0xffffff).into();
+    c.danger_hover = rgb(0xb91c1c).into();
+    c.danger_active = rgb(0x991b1b).into();
+
+    c.success = success();
+    c.success_foreground = rgb(0xffffff).into();
+    c.warning = warning();
+    c.warning_foreground = rgb(0xffffff).into();
+    c.info = accent();
+    c.info_foreground = rgb(0xffffff).into();
+
+    c.list = panel();
+    c.list_hover = panel_alt();
+    c.list_active = accent_soft();
+    c.list_active_border = accent();
+    c.list_even = panel_alt();
+    c.list_head = panel_alt();
+
+    c.sidebar = sidebar_bg();
+    c.sidebar_foreground = text_on_dark();
+    c.sidebar_accent = sidebar_active();
+    c.sidebar_accent_foreground = rgb(0xffffff).into();
+    c.sidebar_border = sidebar_hover();
+
+    c.group_box = panel_alt();
+    c.group_box_foreground = text();
+    c.progress_bar = accent();
+    c.scrollbar = panel_alt();
+    c.scrollbar_thumb = border_strong();
+    c.scrollbar_thumb_hover = muted();
 }

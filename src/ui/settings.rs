@@ -1,6 +1,7 @@
 //! 设置页面：数据管理、快捷键与版本信息。
 
 use gpui::{Context, IntoElement, div, prelude::*};
+use gpui_component::alert::Alert;
 
 use crate::ui::{app::RootView, components::*, theme};
 
@@ -63,10 +64,14 @@ impl RootView {
                             .gap_3()
                             .mt_2()
                             .child(
-                                secondary_button("settings-reset-demo", "重置为演示数据")
-                                    .on_click(cx.listener(
-                                        |this, _, _window, cx| this.reset_demo(cx),
-                                    )),
+                                secondary_button("settings-reset-demo", if self.confirm_reset {
+                                    "再次点击确认重置"
+                                } else {
+                                    "重置为演示数据"
+                                })
+                                .on_click(cx.listener(
+                                    |this, _, _window, cx| this.request_reset_demo(cx),
+                                )),
                             )
                             .child(if self.confirm_clear {
                                 danger_button("settings-clear-all", "再次点击确认清空").on_click(
@@ -88,9 +93,53 @@ impl RootView {
                             .text_color(theme::muted())
                             .mt_2()
                             .child(
-                                "「重置为演示数据」会覆盖当前数据；「清空所有数据」需要点击两次确认，清空后写入一个空的数据文件。",
+                                "「重置为演示数据」和「清空所有数据」都需要点击两次确认，并且会先把当前数据备份成同目录下的 .reset-/.clear- 文件。",
                             ),
                     ),
+            )
+            .child(
+                card()
+                    .p_5()
+                    .child(card_title("数据体检", "本次启动时发现的问题"))
+                    .children(if self.data_damaged {
+                        vec![
+                            Alert::error(
+                                "data-damaged",
+                                "数据文件损坏：原始内容已备份，未被自动覆盖，请从备份文件人工修复。",
+                            )
+                            .title("数据文件上次读取失败")
+                            .into_any_element(),
+                        ]
+                    } else if self.load_notices.is_empty() {
+                        vec![
+                            Alert::success("data-ok", "本次读取未发现异常").into_any_element(),
+                        ]
+                    } else {
+                        Vec::new()
+                    })
+                    .children(
+                        self.load_notices
+                            .iter()
+                            .map(|notice| {
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::muted())
+                                    .mt_1()
+                                    .child(notice.clone())
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                    .child(field_row(
+                        "跳过的坏记录",
+                        format!("{} 条", self.load_skipped),
+                    ))
+                    .child(field_row(
+                        "备份文件",
+                        self.load_backup
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "无".to_string()),
+                    ))
             )
             .child(
                 card()
@@ -100,7 +149,10 @@ impl RootView {
                         div()
                             .text_sm()
                             .text_color(theme::text())
-                            .child("当前数据格式为 version 2。"),
+                            .child(format!(
+                                "当前数据格式为 version {}。",
+                                crate::model::CURRENT_VERSION
+                            )),
                     )
                     .child(
                         div()
@@ -108,7 +160,7 @@ impl RootView {
                             .text_color(theme::muted())
                             .mt_1()
                             .child(
-                                "旧数据没有 tags 字段时会自动补为空数组，加载时自动迁移到 version 2。",
+                                "旧数据会按需自动迁移：缺少 tags 补空数组、缺少阶段历史按投递日期补一条起始事件、标签自动去空白与去重。",
                             ),
                     )
                     .child(
@@ -116,7 +168,14 @@ impl RootView {
                             .text_xs()
                             .text_color(theme::muted())
                             .mt_1()
-                            .child("标签最长 24 个字符，重复标签会自动忽略（大小写不敏感）。"),
+                            .child("标签最长 24 个字符，重复标签会自动忽略（忽略大小写）。"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme::muted())
+                            .mt_1()
+                            .child("数据文件解析失败时会先备份为 .bad-时间戳.json，再逐条恢复可解析的记录。"),
                     ),
             )
             .child(
