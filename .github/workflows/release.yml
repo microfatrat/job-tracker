@@ -50,9 +50,24 @@ jobs:
           name: linux-artifacts
           path: dist/*
 
+  macos:
+    name: macOS package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and package
+        run: ./scripts/package-macos.sh
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: dist/*
+
   release:
     name: Create GitHub Release
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -68,4 +83,5 @@ jobs:
             dist/*.zip
             dist/*.tar.gz
             dist/*.deb
+            dist/*.dmg
             dist/*.sha256

@@ -82,6 +82,7 @@
 | GPUI 0.2.2 | Zed 的 GPU 加速 UI 框架（crates.io 版本） |
 | Windows 后端 | GPUI 内置 DirectX 12 渲染 + DirectWrite 文本 |
 | Linux 后端 | Vulkan 渲染 + X11 / Wayland 窗口 |
+| macOS 后端 | Metal 渲染 + CoreText 文本 |
 | serde / serde_json | 数据序列化与 JSON 持久化 |
 | chrono | 日期与月份计算 |
 | uuid | 投递记录唯一 ID |
@@ -102,9 +103,11 @@ job-tracker/
 ├── packaging/
 │   ├── README.md            # 打包与发布详细指南
 │   ├── linux/job-tracker.desktop
+│   ├── macos/Info.plist     # macOS .app 的 Info.plist 模板
 │   └── windows/job-tracker.iss
 ├── scripts/
 │   ├── package-linux.sh     # Linux tar.gz / .deb
+│   ├── package-macos.sh     # macOS .app / zip / dmg
 │   └── package-windows.ps1  # Windows 便携 ZIP / 安装程序
 └── src/
     ├── main.rs              # 入口：CLI 参数、GPUI 启动、文本报告、快捷键绑定
@@ -205,7 +208,16 @@ Linux：
 ./scripts/package-linux.sh --deb    # 额外生成 .deb
 ```
 
-推送形如 `v0.1.0` 的 tag 后，`.github/workflows/release.yml` 会在 Windows 和 Linux 上自动构建，并把 ZIP / tar.gz / .deb / SHA256 上传到 GitHub Release：
+macOS：
+
+```bash
+xcode-select --install               # 首次需要
+./scripts/package-macos.sh           # JobFlow.app + zip (+ dmg)
+./scripts/package-macos.sh --no-dmg  # 只生成 .app 和 zip
+./scripts/package-macos.sh --sign "Developer ID Application: Your Name (TEAMID)"
+```
+
+推送形如 `v0.1.0` 的 tag 后，`.github/workflows/release.yml` 会在 Windows、Linux 和 macOS 上自动构建，并把 ZIP / tar.gz / .deb / dmg / SHA256 上传到 GitHub Release：
 
 ```bash
 git tag v0.1.0
@@ -391,7 +403,8 @@ cargo test --no-default-features
 `.github/workflows/ci.yml` 会在以下平台执行 `cargo check --all-targets`、`cargo test --all-targets` 和 debug 构建：
 
 - **Windows (MSVC)**：验证 DirectX / DirectWrite 后端与 `windows-manifest` 构建；
-- **Linux (X11/Wayland)**：安装 `libxkbcommon`、`libvulkan`、fontconfig 等依赖后验证图形后端，并额外执行一次无头文本报告 smoke test。
+- **Linux (X11/Wayland)**：安装 `libxkbcommon`、`libvulkan`、fontconfig 等依赖后验证图形后端，并额外执行一次无头文本报告 smoke test；
+- **macOS (Metal)**：验证 Metal / CoreText 后端，并执行一次 `package-macos.sh` 打包 smoke test。
 
 当前包含 12 个单元测试：
 
