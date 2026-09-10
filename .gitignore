@@ -18,3 +18,10 @@ job_tracker_data.json
 .idea/
 .vscode/
 .DS_Store
+
+# SSH 密钥（避免误提交私钥）
+.ssh/
+id_ed25519*
+id_rsa*
+*.pem
+*.key
