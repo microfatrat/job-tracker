@@ -1,0 +1,20 @@
+# Rust 构建产物
+/target
+**/*.rs.bk
+
+# 本地构建环境（WSL 下用到的 CARGO_HOME / 原生库前缀）
+/.cargo-home
+/.native
+
+# 打包输出
+/dist
+*.sha256
+
+# 本地数据文件（用户数据目录之外的回退路径）
+job_tracker_data.json
+*.json.tmp
+
+# 编辑器 / 系统文件
+.idea/
+.vscode/
+.DS_Store

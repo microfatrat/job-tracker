@@ -1,0 +1,30 @@
+[package]
+name = "job-tracker"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "求职简历投递与面试阶段统计系统 (GPUI)"
+license = "MIT"
+
+[features]
+default = ["gui"]
+# 启用 GPUI 的图形后端；本地无图形依赖时可用 --no-default-features 进行无头编译/测试。
+# wayland / x11 / font-kit 只在 Linux/FreeBSD 生效，windows-manifest 只在 Windows 生效。
+gui = ["gpui/wayland", "gpui/x11", "gpui/font-kit", "gpui/windows-manifest"]
+# Windows release 构建时隐藏控制台窗口；启用后 release 版的 --report/--seed 控制台输出不可见，
+# 需要查看命令行输出时请使用 debug 构建。
+windows-gui = []
+
+[dependencies]
+gpui = { version = "0.2.2", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+unicode-segmentation = "1"
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
