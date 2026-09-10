@@ -220,7 +220,7 @@ Windows（PowerShell）：
 ```powershell
 .\scripts\package-windows.ps1              # release 构建 + 便携 ZIP
 .\scripts\package-windows.ps1 -Installer   # 额外生成 Inno Setup 安装程序
-.\scripts\package-windows.ps1 -WindowsGui  # 隐藏 release 控制台窗口
+.\scripts\package-windows.ps1 -WindowsGui  # 连 debug 构建也隐藏控制台（release 本来就隐藏）
 ```
 
 Linux：
@@ -263,14 +263,15 @@ cargo run
 ### 构建依赖说明
 
 - GPUI 的 Windows 后端使用 DirectX / DirectWrite，不需要 Vulkan、X11 或 Wayland。
-- 默认 release 构建保留控制台，`--report` / `--seed` 正常输出。
-- 如果希望发布版双击运行时没有控制台窗口，可以启用 `windows-gui` feature：
+- **release 构建默认使用 GUI 子系统**：双击运行时不会弹出黑色控制台窗口。
+  从终端执行 `job-tracker.exe --report` / `--seed` 时，程序会自己附加回父控制台，
+  输出照常显示在那个终端里；输出被重定向到文件（`> report.txt`）时也保持重定向。
+- debug 构建（`cargo run`）保留控制台，方便开发时看日志；如果也想隐藏，
+  加上 `windows-gui` feature：
 
   ```powershell
-  cargo build --release --features windows-gui
+  cargo build --features windows-gui
   ```
-
-  注意：启用后 release 版的 `--report` / `--seed` 控制台输出不可见；查看报告请使用 debug 构建（`cargo run -- --report`）。
 - 默认的 `gui` feature 包含 `gpui/windows-manifest`，用于嵌入 DPI 感知清单；它需要 Windows SDK 中的 `rc.exe`（通常随 Visual Studio Build Tools 安装）。
 - **release 构建**还会编译 HLSL 着色器，需要 Windows SDK 中的 `fxc.exe`；如果没装，可以先用 debug 构建（`cargo run`），或设置 `GPUI_FXC_PATH` 指向 `fxc.exe`。
 - 如果 `rc.exe` 不可用，可以临时用无清单模式运行：

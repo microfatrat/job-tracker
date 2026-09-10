@@ -8,10 +8,14 @@
 //!
 //! 数据默认保存在用户数据目录，也可以用环境变量 JOB_TRACKER_DATA 指定文件。
 
-// 可选：Windows release 构建使用 GUI 子系统，避免在图形界面后面弹出控制台窗口。
-// 需要保留 --report/--seed 的控制台输出时，不要启用 windows-gui feature。
+// Windows：release 构建默认使用 GUI 子系统，双击运行时不会弹出黑色控制台窗口；
+// 从终端执行 --report/--seed 时，程序会自己附加回父控制台（见 win_console 模块）。
+// `windows-gui` feature 用于让 debug 构建也隐藏控制台。
 #![cfg_attr(
-    all(target_os = "windows", feature = "windows-gui", not(debug_assertions)),
+    all(
+        target_os = "windows",
+        any(feature = "windows-gui", not(debug_assertions))
+    ),
     windows_subsystem = "windows"
 )]
 // 无头构建（--no-default-features）里没有 ui 模块，model/stats 的一部分
@@ -24,6 +28,8 @@ mod stats;
 mod storage;
 #[cfg(feature = "gui")]
 mod ui;
+#[cfg(target_os = "windows")]
+mod win_console;
 
 #[cfg(feature = "gui")]
 use gpui::{
@@ -40,6 +46,11 @@ use crate::ui::{
 };
 
 fn main() {
+    // Windows 的 GUI 子系统构建没有自己的控制台；如果是从终端启动的，
+    // 这里把它接回父控制台，保证 --report/--seed 的输出仍能看到。
+    #[cfg(target_os = "windows")]
+    win_console::attach_parent_console();
+
     let args: Vec<String> = std::env::args().skip(1).collect();
     let force = args.iter().any(|arg| arg == "--force" || arg == "-f");
 

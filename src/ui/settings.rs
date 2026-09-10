@@ -140,20 +140,6 @@ impl RootView {
             .child(
                 card()
                     .p_5()
-                    .child(card_title(
-                        "快捷键",
-                        "secondary = Windows/Linux 的 Ctrl，macOS 的 Command",
-                    ))
-                    .child(field_row("secondary + N", "新增投递"))
-                    .child(field_row("secondary + S", "保存表单"))
-                    .child(field_row("secondary + F", "聚焦搜索框"))
-                    .child(field_row("secondary + Q", "退出"))
-                    .child(field_row("Esc", "关闭表单"))
-                    .child(field_row("Enter（标签输入框）", "添加标签")),
-            )
-            .child(
-                card()
-                    .p_5()
                     .child(card_title("关于", "构建信息"))
                     .child(field_row("应用版本", env!("CARGO_PKG_VERSION")))
                     .child(field_row("GPUI", "0.2.2"))
