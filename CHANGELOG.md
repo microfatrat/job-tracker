@@ -2,6 +2,15 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)，1.0 之前次版本号可能包含不兼容变更。
 
+## [0.2.1] - 2026-09-10
+
+### 修复
+
+- **打包脚本缺少可执行位**：`scripts/package-linux.sh`、`scripts/package-macos.sh`
+  在 git 里是 `100644`，导致 CI 与 Release 工作流执行 `./scripts/...` 时直接
+  "Permission denied" 失败（Windows 走 PowerShell 不受影响）。
+  现在标记为可执行，Release 工作流可以正常产出 tar.gz / .deb / dmg / zip。
+
 ## [0.2.0] - 2026-09-10
 
 ### 新增
