@@ -1,7 +1,7 @@
 //! 设置页面：数据管理、快捷键与版本信息。
 
 use gpui::{Context, IntoElement, div, prelude::*};
-use gpui_component::alert::Alert;
+use gpui_kit::component::alert::Alert;
 
 use crate::ui::{app::RootView, components::*, theme};
 
@@ -142,7 +142,8 @@ impl RootView {
                     .p_5()
                     .child(card_title("关于", "构建信息"))
                     .child(field_row("应用版本", env!("CARGO_PKG_VERSION")))
-                    .child(field_row("GPUI", "0.2.2"))
+                    .child(field_row("UI 框架", "gpui-kit 0.6.1 / gpui-pre 0.3.4"))
+                    .child(field_row("组件库", "gpui-component 0.6.1"))
                     .child(field_row(
                         "构建类型",
                         if cfg!(debug_assertions) {

@@ -7,13 +7,12 @@ use gpui::{
     AnyElement, App, Context, Div, Entity, FocusHandle, Focusable, FontWeight, IntoElement,
     ParentElement, Render, SharedString, Styled, Window, actions, div, prelude::*, px,
 };
-use gpui_component::{
+use gpui_kit::component::{
     Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     calendar::{Date, Matcher},
     date_picker::{DatePicker, DatePickerState},
-    dialog::DialogButtonProps,
-    input::{Input, InputEvent, InputState},
+    input::{Input, InputEvent, InputState, Textarea, TextareaState},
     notification::Notification,
     WindowExt as _,
 };
@@ -97,7 +96,7 @@ pub struct FormState {
     pub next_action: Entity<InputState>,
     /// 下一步日期用日历选择（可留空、可选未来）。
     pub next_action_at: Entity<DatePickerState>,
-    pub notes: Entity<InputState>,
+    pub notes: Entity<TextareaState>,
     pub tag_input: Entity<InputState>,
     pub tags: Vec<String>,
     pub stage: Stage,
@@ -160,10 +159,10 @@ impl FormState {
             next_action: new_input(window, cx, "例如：准备二面"),
             next_action_at: new_date_picker(window, cx, None, false),
             notes: cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder("备注：面试反馈、联系人、薪资细节 ...")
-                    .multi_line(true)
-                    .rows(3)
+                let mut state =
+                    TextareaState::new(window, cx).placeholder("备注：面试反馈、联系人、薪资细节 ...");
+                state.set_auto_grow(3, 8, cx);
+                state
             }),
             tag_input: new_input(window, cx, "输入自定义标签，回车或点击添加"),
             tags: Vec::new(),
@@ -180,11 +179,12 @@ impl FormState {
             &self.location,
             &self.salary,
             &self.next_action,
-            &self.notes,
             &self.tag_input,
         ] {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
+        self.notes
+            .update(cx, |input, cx| input.set_value("", window, cx));
         self.applied_at
             .update(cx, |state, cx| state.set_date(model::today(), window, cx));
         self.next_action_at
@@ -195,18 +195,20 @@ impl FormState {
 
     /// 载入一条已有记录，准备编辑。
     pub fn load(&mut self, application: &JobApplication, window: &mut Window, cx: &mut App) {
-        let pairs: [(&Entity<InputState>, String); 7] = [
+        let pairs: [(&Entity<InputState>, String); 6] = [
             (&self.company, application.company.clone()),
             (&self.position, application.position.clone()),
             (&self.channel, application.channel.clone()),
             (&self.location, application.location.clone()),
             (&self.salary, application.salary.clone()),
             (&self.next_action, application.next_action.clone()),
-            (&self.notes, application.notes.clone()),
         ];
         for (input, value) in pairs {
             input.update(cx, |input, cx| input.set_value(value, window, cx));
         }
+        let notes = application.notes.clone();
+        self.notes
+            .update(cx, |input, cx| input.set_value(notes, window, cx));
         let applied_at = application.applied_at;
         self.applied_at
             .update(cx, |state, cx| state.set_date(applied_at, window, cx));
@@ -555,11 +557,14 @@ impl RootView {
         cx.notify();
     }
 
-    /// 用组件库的 Dialog 打开新增/编辑表单。
+    /// 用组件库的 AlertDialog 打开新增/编辑表单。
+    ///
+    /// gpui-component 0.6 起，`Dialog` 只渲染调用方给的 footer，
+    /// 「默认带确定/取消按钮」的对话框是 `AlertDialog`（配合 DialogButtonProps）。
     fn open_form_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let view = cx.entity();
         let editing = self.editing.is_some();
-        window.open_dialog(cx, move |dialog, _window, cx| {
+        window.open_alert_dialog(cx, move |dialog, _window, cx| {
             let this = view.read(cx);
             dialog
                 .title(if editing {
@@ -567,24 +572,35 @@ impl RootView {
                 } else {
                     "新增投递记录"
                 })
-                .w(px(760.))
+                .width(px(760.))
                 .child(this.form_dialog_body(&view))
-                .footer(|ok, cancel, window, cx| vec![cancel(window, cx), ok(window, cx)])
-                .button_props(
-                    DialogButtonProps::default()
-                        .ok_text("保存记录")
-                        .cancel_text("取消"),
-                )
-                .on_ok({
-                    let view = view.clone();
-                    move |_, window, cx| view.update(cx, |this, cx| this.submit_form(window, cx))
-                })
-                .on_cancel({
-                    let view = view.clone();
-                    move |_, _window, cx| {
-                        view.update(cx, |this, cx| this.close_form(cx));
-                        true
-                    }
+                // 自己给 footer：0.6 的默认按钮走 `Confirm` 动作分发，
+                // 这里直接绑回调更直观，也避免依赖焦点链。
+                .footer({
+                    let cancel_view = view.clone();
+                    let save_view = view.clone();
+                    div()
+                        .flex()
+                        .flex_row()
+                        .justify_end()
+                        .gap_2()
+                        .child(
+                            secondary_button("cancel-form", "取消").on_click(move |_, window, cx| {
+                                cancel_view.update(cx, |this, cx| this.close_form(cx));
+                                window.close_dialog(cx);
+                            }),
+                        )
+                        .child(
+                            primary_button("save-form", "保存记录").on_click(
+                                move |_, window, cx| {
+                                    let saved = save_view
+                                        .update(cx, |this, cx| this.submit_form(window, cx));
+                                    if saved {
+                                        window.close_dialog(cx);
+                                    }
+                                },
+                            ),
+                        )
                 })
         });
     }
@@ -695,7 +711,7 @@ impl RootView {
             self.save_store(cx);
         }
         window.close_dialog(cx);
-        window.focus(&self.focus_handle(cx));
+        window.focus(&self.focus_handle(cx), cx);
         cx.notify();
         true
     }
@@ -1115,6 +1131,23 @@ impl RootView {
             .child(Input::new(&input).cleanable(true))
     }
 
+    /// 多行文本字段（备注）。
+    fn textarea_field(&self, label: &str, state: Entity<TextareaState>) -> Div {
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .min_w(px(0.))
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme::muted())
+                    .child(label.to_string()),
+            )
+            .child(Textarea::new(&state))
+    }
+
     /// 表单里的日期字段：点击弹出日历选择，不需要手输日期。
     fn date_field(&self, label: &str, state: Entity<DatePickerState>, placeholder: &str) -> Div {
         let placeholder = placeholder.to_string();
@@ -1191,7 +1224,7 @@ impl RootView {
                         "选择日期（可留空）",
                     )),
             )
-            .child(self.form_field("备注", self.form.notes.clone()))
+            .child(self.textarea_field("备注", self.form.notes.clone()))
             .child(
                 div()
                     .flex()
@@ -1327,9 +1360,9 @@ impl Render for AppShell {
         div()
             .size_full()
             .child(self.view.clone())
-            .children(gpui_component::Root::render_dialog_layer(window, cx))
-            .children(gpui_component::Root::render_sheet_layer(window, cx))
-            .children(gpui_component::Root::render_notification_layer(window, cx))
+            .children(gpui_kit::component::Root::render_dialog_layer(window, cx))
+            .children(gpui_kit::component::Root::render_sheet_layer(window, cx))
+            .children(gpui_kit::component::Root::render_notification_layer(window, cx))
     }
 }
 

@@ -38,7 +38,7 @@ jobs:
             build-essential pkg-config dpkg-dev \
             libxkbcommon-dev libxkbcommon-x11-dev \
             libvulkan-dev mesa-vulkan-drivers \
-            libfontconfig1 libfreetype6 \
+            libfontconfig1 libfreetype6 libfontconfig1-dev libfreetype6-dev \
             libwayland-client0 \
             libxcb1 libx11-xcb1 libxshmfence1
       - uses: Swatinem/rust-cache@v2

@@ -1,6 +1,6 @@
 //! 阶段统计页面：漏斗、转化率、月度趋势与渠道效果。
 
-use gpui::{Context, FontWeight, IntoElement, div, prelude::*, px};
+use gpui::{Context, FontWeight, IntoElement, SharedString, div, prelude::*, px};
 
 use crate::{
     model::{self, Stage},
@@ -168,7 +168,14 @@ impl RootView {
                                                         )),
                                                 ),
                                         )
-                                        .child(progress_bar(stat.step_conversion, color))
+                                        .child(progress_bar(
+                                            SharedString::from(format!(
+                                                "funnel-detail-{:?}",
+                                                stat.stage
+                                            )),
+                                            stat.step_conversion,
+                                            color,
+                                        ))
                                         .child({
                                             let previous = stat.previous_reached;
                                             let lost = previous.saturating_sub(stat.reached);
@@ -264,6 +271,7 @@ impl RootView {
                                                             )
                                                             .child(div().flex_1().child(
                                                                 progress_bar(
+                                                                    "trend-applied",
                                                                     applied_width,
                                                                     theme::accent(),
                                                                 ),
@@ -284,6 +292,7 @@ impl RootView {
                                                             )
                                                             .child(div().flex_1().child(
                                                                 progress_bar(
+                                                                    "trend-interview",
                                                                     interview_width,
                                                                     theme::teal(),
                                                                 ),
@@ -304,6 +313,7 @@ impl RootView {
                                                             )
                                                             .child(div().flex_1().child(
                                                                 progress_bar(
+                                                                    "trend-offer",
                                                                     offer_width,
                                                                     theme::success(),
                                                                 ),
@@ -437,7 +447,11 @@ impl RootView {
                                                 .child(count.to_string()),
                                         ),
                                 )
-                                .child(progress_bar(width, theme::stage_color(stage)))
+                                .child(progress_bar(
+                                    SharedString::from(format!("dist-{:?}", stage)),
+                                    width,
+                                    theme::stage_color(stage),
+                                ))
                         }),
                     )),
             )

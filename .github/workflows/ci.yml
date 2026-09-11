@@ -33,7 +33,7 @@ jobs:
             build-essential pkg-config \
             libxkbcommon-dev libxkbcommon-x11-dev \
             libvulkan-dev mesa-vulkan-drivers \
-            libfontconfig1 libfreetype6 \
+            libfontconfig1 libfreetype6 libfontconfig1-dev libfreetype6-dev \
             libwayland-client0 \
             libxcb1 libx11-xcb1 libxshmfence1
       - name: Cache cargo

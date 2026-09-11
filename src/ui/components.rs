@@ -5,7 +5,7 @@
 //! 交给组件库统一处理。
 
 use gpui::{App, Div, FontWeight, Hsla, ParentElement, SharedString, Styled, div, prelude::*, px};
-use gpui_component::{
+use gpui_kit::component::{
     Icon, IconName, Selectable as _, Sizable as _,
     button::{Button, ButtonCustomVariant, ButtonVariants as _},
     list::ListItem,
@@ -93,9 +93,11 @@ pub fn stage_badge(stage: Stage) -> Tag {
     .child(stage.label())
 }
 
-/// 进度条（组件库 Progress）。
-pub fn progress_bar(fraction: f32, color: Hsla) -> Progress {
-    Progress::new().value(fraction.clamp(0.0, 1.0) * 100.0).bg(color)
+/// 进度条（组件库 Progress；0.6 起需要给一个稳定的 id）。
+pub fn progress_bar(id: impl Into<SharedString>, fraction: f32, color: Hsla) -> Progress {
+    Progress::new(id.into())
+        .value(fraction.clamp(0.0, 1.0) * 100.0)
+        .bg(color)
 }
 
 /// 漏斗阶段行。
@@ -144,7 +146,11 @@ pub fn funnel_row(stat: &StageStat, max_reached: usize) -> Div {
                         .items_center()
                         .gap_3()
                         .flex_1()
-                        .child(div().flex_1().child(progress_bar(width, color)))
+                        .child(div().flex_1().child(progress_bar(
+                            SharedString::from(format!("funnel-{:?}", stat.stage)),
+                            width,
+                            color,
+                        )))
                         .child(
                             div()
                                 .w(px(44.))
