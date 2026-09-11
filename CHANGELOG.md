@@ -2,6 +2,35 @@
 
 本项目遵循[语义化版本](https://semver.org/lang/zh-CN/)，1.0 之前次版本号可能包含不兼容变更。
 
+## [0.3.0] - 2026-09-10
+
+### 变更（依赖栈升级）
+
+- **UI 依赖整体迁到 [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6.1**：
+  zed 的 gpui 从 crates.io 的 `gpui 0.2.2` 换成新一代快照 `gpui-pre 0.3.4`，
+  组件库从 `gpui-component 0.5.1` 升到 `0.6.1`，资源包从 `gpui-component-assets`
+  换成 `gpui-kit-assets`。依赖只剩一个入口：
+  `gpui-kit = { version = "0.6.1" }`（默认带 `component` + `assets`），
+  平台后端由 kit 内部的 `gpui-pre-platform` 统一打开。
+- 代码侧随之调整：
+  - 启动改为 `gpui_kit::application()` + `gpui_kit::init(cx)`（`Application::new()` 已移除）；
+  - 图标资源改为 `gpui_kit::assets::Assets`；
+  - 表单对话框用 `AlertDialog`（0.6 的 `Dialog` 只渲染自定义 footer），
+    footer 由自己渲染两个按钮并直接绑回调；
+  - 多行备注改用 `Textarea` / `TextareaState`（0.6 把多行输入从 `InputState` 拆出去了）；
+  - `Progress::new()` 现在需要传一个稳定的 id；
+  - `Window::focus(handle, cx)` 多了一个参数。
+- **主题对接跟着升级**：组件取色链路变成 `colors → tokens → Base 层语义 token`，
+  且按钮读的是 `colors.button_primary` 这类组件级字段。`theme::install_component_theme`
+  现在会一并写入组件级颜色、重建 `ThemeTokens` 并调用 `Theme::sync_base(cx)`，
+  否则按钮等控件会退回默认主题（近黑色主色）。
+- 构建依赖：新依赖链里的 `yeslogic-fontconfig-sys` 需要 `fontconfig.pc`，
+  Linux 上要装 `fontconfig-devel freetype-devel`（Ubuntu：`libfontconfig1-dev libfreetype6-dev`），
+  CI 与 Release 工作流已补上；README 的本地无 root 前缀方案也补了对应说明。
+- 设置页「关于」改为显示 `gpui-kit 0.6.1 / gpui-pre 0.3.4` 与 `gpui-component 0.6.1`。
+
+功能与界面行为保持不变（27 个单元测试、界面交互均已回归验证）。
+
 ## [0.2.3] - 2026-09-10
 
 ### 新增

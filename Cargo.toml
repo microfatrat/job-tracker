@@ -1,6 +1,6 @@
 [package]
 name = "job-tracker"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "求职简历投递与面试阶段统计系统 (GPUI)"
@@ -8,30 +8,28 @@ license = "MIT"
 
 [features]
 default = ["gui"]
-# 启用 GPUI 的图形后端；本地无图形依赖时可用 --no-default-features 进行无头编译/测试。
-# wayland / x11 / font-kit 只在 Linux/FreeBSD 生效，windows-manifest 只在 Windows 生效。
-gui = [
-    "dep:gpui-component",
-    "dep:gpui-component-assets",
-    "gpui/wayland",
-    "gpui/x11",
-    "gpui/font-kit",
-    "gpui/windows-manifest",
-]
+# 启用图形界面（gpui-kit + 平台后端）；无图形环境可用 --no-default-features
+# 只编译核心逻辑与 CLI。
+# 平台后端由 gpui-kit 内部的 gpui-pre-platform 统一打开（font-kit/x11/wayland），
+# 这里只额外指定 Windows 的 DPI 清单。
+gui = ["dep:gpui-kit", "dep:gpui", "gpui/windows-manifest"]
 # Windows release 构建时隐藏控制台窗口；启用后 release 版的 --report/--seed 控制台输出不可见，
 # 需要查看命令行输出时请使用 debug 构建。
 windows-gui = []
 
 [dependencies]
-gpui = { version = "0.2.2", default-features = false }
-# 组件库：0.5.1 依赖 crates.io 的 gpui ^0.2.2，与本项目版本一致；
-# 0.6.x 换成了 gpui-base，类型无法与本项目的 gpui 互通，所以固定在 0.5.1。
-# 设为可选依赖并挂到 gui feature 上：gpui-component 会打开 gpui 的默认
-# feature（x11/wayland/font-kit），若不隔离，--no-default-features 的无头
-# 构建也会被拖进图形后端。
-gpui-component = { version = "0.5.1", optional = true }
-# 组件库的图标（SVG）需要通过 gpui 的 AssetSource 注册，否则 Icon 渲染不出来。
-gpui-component-assets = { version = "0.5.1", optional = true }
+# UI 栈：gpui-kit 是 longbridge 的单一入口 crate（0.6 起 zed 的 gpui 改以
+# gpui-pre 快照发布，配套 gpui-base / gpui-component / gpui-kit-assets）：
+#   gpui_kit::*           GPUI 框架本身（gpui-pre，zed@6916400 快照）
+#   gpui_kit::platform    原生平台后端（X11 / Wayland / macOS / Windows）
+#   gpui_kit::base        行为与基础设施层
+#   gpui_kit::component   组件库（对话框 / 输入框 / 日历 / 通知 / 图标 …）
+#   gpui_kit::assets      图标等内置资源（AssetSource）
+gpui-kit = { version = "0.6.1", optional = true }
+# 与 gpui-kit 内部的 gpui-pre 是同一个 crate，特性会叠加。
+# 显式列出有两个原因：Windows 上要嵌入 DPI 感知清单（gpui-kit 未暴露该
+# feature），以及给平台无关的框架类型留一个短名字 `gpui::`。
+gpui = { package = "gpui-pre", version = "0.3", default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }

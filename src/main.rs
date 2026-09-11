@@ -33,8 +33,7 @@ mod win_console;
 
 #[cfg(feature = "gui")]
 use gpui::{
-    App, Application, Bounds, Focusable, KeyBinding, WindowBounds, WindowOptions, prelude::*, px,
-    size,
+    App, Bounds, Focusable, KeyBinding, WindowBounds, WindowOptions, prelude::*, px, size,
 };
 
 use crate::{model::Store, stats::Analytics};
@@ -96,14 +95,15 @@ fn main() {
 /// 启动 GPUI 图形界面。
 #[cfg(feature = "gui")]
 fn run_gui() {
-    Application::new()
+    // gpui-kit 的入口：拿到带平台后端的 Application
+    gpui_kit::application()
         // 组件库的图标是 SVG，需要注册 AssetSource 才能渲染。
-        .with_assets(gpui_component_assets::Assets)
+        .with_assets(gpui_kit::assets::Assets)
         .run(|cx: &mut App| {
         // 组件库自带的界面文案（日历的星期/月份、日期选择器等）用中文。
-        gpui_component::set_locale("zh-CN");
+        gpui_kit::component::set_locale("zh-CN");
         // 组件库初始化：主题、组件全局状态与默认快捷键。
-        gpui_component::init(cx);
+        gpui_kit::init(cx);
         // 把本项目配色灌进组件库主题，避免两套皮肤混用。
         crate::ui::theme::install_component_theme(cx);
         bind_keys(cx);
@@ -140,7 +140,7 @@ fn run_gui() {
                 // 因此窗口的根视图必须是 gpui_component::Root，
                 // 里面再包一层负责渲染浮层的 AppShell。
                 let shell = cx.new(|_| AppShell::new(view));
-                cx.new(|cx| gpui_component::Root::new(shell, window, cx))
+                cx.new(|cx| gpui_kit::component::Root::new(shell, window, cx))
             },
         ) {
             Ok(window) => window,
@@ -161,7 +161,7 @@ fn run_gui() {
             .update(cx, |_root, window, cx| {
                 if let Some(view) = &view {
                     let handle = view.read(cx).focus_handle(cx);
-                    window.focus(&handle);
+                    window.focus(&handle, cx);
                 }
                 cx.activate(true);
             })

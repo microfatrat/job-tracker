@@ -86,7 +86,7 @@
 | 设置（数据管理、数据体检、快捷键） | [settings.png](docs/screenshots/settings.png) |
 
 > 截图为 v0.2.0 的界面（Linux + WSLg，1280×820），使用 gpui-component 组件库渲染。
-> release 构建（`opt-level=2 + thin LTO + strip`）的 Linux 二进制约 18 MB，压缩后的 tar.gz 约 6.7 MB。
+> release 构建（`opt-level=2 + thin LTO + strip`）的 Linux 二进制约 34 MB（gpui-kit 0.6 比旧栈大一些），压缩后的 tar.gz 约 10 MB。
 
 ---
 
@@ -95,8 +95,9 @@
 | 组件 | 说明 |
 | --- | --- |
 | Rust 2024 | `edition = "2024"`，需要 Rust 1.85+ |
-| GPUI 0.2.2 | Zed 的 GPU 加速 UI 框架（crates.io 版本） |
-| gpui-component 0.5.1 | GPUI 的组件库（60+ 桌面组件）：按钮、输入框、对话框、通知、标签、进度条、图标…… |
+| gpui-kit 0.6.1 | longbridge 的 GPUI 全家桶单一入口：框架 + 平台后端 + 基础层 + 组件 + 资源 |
+| gpui-pre 0.3.4 | 框架层：Zed 的 gpui 快照（zed@6916400），替代早期的 `gpui 0.2.2` |
+| gpui-component 0.6.1 | 组件库（60+ 桌面组件）：按钮、输入框、日历、对话框、通知、标签、进度条、图标…… |
 | Windows 后端 | GPUI 内置 DirectX 12 渲染 + DirectWrite 文本 |
 | Linux 后端 | Vulkan 渲染 + X11 / Wayland 窗口 |
 | macOS 后端 | Metal 渲染 + CoreText 文本 |
@@ -316,7 +317,7 @@ GPUI 在 Linux 上使用 Vulkan 渲染，并通过 X11 或 Wayland 创建窗口�
 sudo dnf install -y gcc-c++ pkgconf-pkg-config \
   libxkbcommon-devel libxkbcommon-x11-devel \
   vulkan-loader-devel vulkan-loader mesa-vulkan-drivers \
-  fontconfig freetype google-noto-sans-cjk-fonts \
+  fontconfig freetype fontconfig-devel freetype-devel google-noto-sans-cjk-fonts \
   libxcb libxcb-devel
 ```
 
@@ -327,7 +328,7 @@ sudo apt update
 sudo apt install -y build-essential pkg-config \
   libxkbcommon-dev libxkbcommon-x11-dev \
   libvulkan-dev vulkan-tools mesa-vulkan-drivers \
-  libfontconfig1 libfreetype6 fonts-noto-cjk \
+  libfontconfig1 libfreetype6 libfontconfig1-dev libfreetype6-dev fonts-noto-cjk \
   libxcb1 libxcb1-dev
 ```
 
@@ -354,7 +355,7 @@ ln -sf /mnt/wslg/.X11-unix/X0 /tmp/.X11-unix/X0
 
 ### WSLg 上必须走 X11 后端
 
-**WSLg 的 Weston 只提供 `xdg_wm_base` v1**，而 GPUI 0.2.2 的 Wayland 后端要求 v2..=v5，
+**WSLg 的 Weston 只提供 `xdg_wm_base` v1**，而 GPUI（gpui-pre）的 Wayland 后端要求 v2..=v5，
 所以在 WSLg 里直接 `cargo run` 会 panic：
 
 ```text
@@ -376,7 +377,9 @@ WAYLAND_DISPLAY= cargo run
 1. 用 `dnf download` 拉 RPM（不需要 root），再用 `rpm2archive -n <rpm> | tar -xf - -C .native/root` 解包，
    需要的包大致是：`libxcb libXau libXdmcp libxkbcommon libxkbcommon-x11 libX11 libX11-xcb libX11-common
    vulkan-loader mesa-vulkan-drivers llvm-libs libpng harfbuzz graphite2 fontconfig freetype
-   libdrm libxshmfence libwayland-client libdisplay-info spirv-tools-libs dejavu-sans-fonts xwininfo xwd`；
+   libdrm libxshmfence libwayland-client libdisplay-info spirv-tools-libs dejavu-sans-fonts xwininfo xwd
+   fontconfig-devel freetype-devel`（后两个是为了拿到 `fontconfig.pc`：0.6 的依赖链里
+   `yeslogic-fontconfig-sys` 会在构建时用 pkg-config 查它）；
 2. 在 `.native/root/usr/lib64` 里给 `-l` 用的库名建软链（`libxcb.so -> libxcb.so.1` 等）；
 3. 把 `mesa` 的 ICD 清单里的 `library_path` 改成前缀内的绝对路径；
 4. 由于本机没有 `/etc/fonts/fonts.conf`，自带一份 `fonts.conf` 指向 `/usr/share/fonts` 与前缀里的 DejaVu 字体；
@@ -391,6 +394,8 @@ rustflags = ["-L", "<repo>/.native/root/usr/lib64",
 LD_LIBRARY_PATH      = { value = ".native/root/usr/lib64", relative = true, force = true }
 VK_ICD_FILENAMES     = { value = ".native/root/usr/share/vulkan/icd.d/lvp_icd.x86_64.json", relative = true, force = true }
 FONTCONFIG_FILE      = { value = ".native/root/etc-fonts.conf", relative = true, force = true }
+# yeslogic-fontconfig-sys 构建时要 pkg-config 找 fontconfig（前缀里放一份精简 .pc）
+PKG_CONFIG_PATH      = { value = ".native/root/usr/lib64/pkgconfig", relative = true, force = true }
 XLOCALEDIR           = { value = ".native/root/usr/share/X11/locale", relative = true, force = true }
 MESA_SHADER_CACHE_DIR = { value = "/tmp/mesa-cache", force = true }
 WAYLAND_DISPLAY      = { value = "", force = true }   # 见上一节
@@ -419,39 +424,50 @@ WAYLAND_DISPLAY      = { value = "", force = true }   # 见上一节
 
 ---
 
-## UI 组件库（gpui-component）
+## UI 组件库（gpui-kit / gpui-component）
 
-界面基于 [gpui-component](https://github.com/longbridge/gpui-component) 构建：
+界面基于 [gpui-kit](https://github.com/longbridge/gpui-kit) 0.6.1 构建。0.6 起 zed 的 gpui
+以 `gpui-pre` 快照发布，longbridge 把它们收进一个入口 crate：
+
+| 依赖 | 作用 |
+| --- | --- |
+| `gpui-kit` | 唯一入口：`gpui_kit::*` 就是 GPUI 框架，另有 `::platform` / `::base` / `::component` / `::assets` 子层 |
+| `gpui`（`package = "gpui-pre"`） | 与 kit 内部同一个 crate，显式列出只为在 Windows 上嵌入 DPI 清单（kit 未暴露该 feature） |
 
 | 界面元素 | 使用的组件 |
 | --- | --- |
-| 新增/编辑投递表单 | `Dialog`（自带遮罩、ESC 关闭、焦点管理、底部按钮）+ `Input` |
+| 新增/编辑投递表单 | `AlertDialog`（遮罩、ESC 关闭、焦点管理、底部按钮）+ `Input` |
+| 投递日期 / 下一步日期 | `DatePicker`（中文日历，投递日期禁选未来） |
+| 备注 | `Textarea`（多行、自动增高） |
 | 顶部搜索框 | `Input`（前置搜索图标、一键清空） |
-| 所有按钮 | `Button`（primary / danger / ghost / 图标按钮 / 尺寸变体） |
-| 阶段与标签 | `Tag`（阶段保留原配色）、`Input` + 标签快捷添加按钮 |
-| 记录列表 | `ListItem`（统一的 hover / 选中态） |
-| 漏斗进度条 | `Progress` |
-| 操作反馈 | `Notification`（右上角浮层，自动消失，无需自己写定时器） |
+| 所有按钮 | `Button`（primary / danger / ghost / 尺寸变体） |
+| 阶段与标签 | `Tag` + `Button` |
+| 记录列表 | `ListItem` |
+| 漏斗与趋势条 | `Progress` |
+| 操作反馈 | `Notification`（右上角浮层、自动消失） |
 | 数据体检提示 | `Alert` |
-| 侧边栏与标签页图标 | `Icon` + `IconName`（Lucide 图标，`gpui-component-assets`） |
+| 图标 | `Icon` + `IconName`（Lucide，`gpui_kit::assets`） |
 
 集成时踩到的几个点，已经在代码里处理：
 
-1. **版本必须锁 `0.5.1`**：只有它依赖 crates.io 的 `gpui ^0.2.2`，与本项目一致；
-   0.6.x 换成了 `gpui-base`，类型无法与本项目的 `gpui` 互通。
-2. **`gui` feature 隔离**：`gpui-component` 会打开 gpui 的默认 feature（x11/wayland/font-kit），
-   所以它被设为可选依赖并挂在 `gui` 上，`ui` 模块整体 `#[cfg(feature = "gui")]`，
-   这样 `--no-default-features` 的无头构建/测试不会被拖进图形依赖。
-3. **必须注册资源**：图标是 SVG，需要 `Application::new().with_assets(gpui_component_assets::Assets)`，
+1. **依赖只留一个入口**：`gpui-kit = { version = "0.6.1" }`（默认带 `component` + `assets`），
+   平台后端（X11/Wayland/macOS/Windows）由 kit 内部的 `gpui-pre-platform` 统一打开，
+   不再需要手写 `gpui/wayland`、`gpui/x11` 之类的 feature。整个 UI 栈挂在 `gui` feature 上，
+   `--no-default-features` 的无头构建不会把它拖进来。
+2. **启动方式变了**：`Application::new()` 已不存在，改用 `gpui_kit::application()`
+   （带平台后端的 Application），初始化用 `gpui_kit::init(cx)`。
+3. **图标资源**：需要 `gpui_kit::application().with_assets(gpui_kit::assets::Assets)`，
    否则 `Icon` 什么都不显示。
-4. **浮层要自己渲染**：`gpui_component::Root` 只渲染内嵌视图，`Dialog`/`Sheet`/`Notification`
+4. **浮层要自己渲染**：`Root` 只渲染内嵌视图，`Dialog`/`Sheet`/`Notification`
    需要应用在根视图外层调用 `Root::render_*_layer(window, cx)`；而表单内容又要读 `RootView`，
    直接在 `RootView::render` 里渲染会「自己读自己」而 panic，因此多包了一层 `AppShell`。
-5. **主题对接**：组件库默认是 shadcn 中性色（主色接近纯黑），`theme::install_component_theme`
-   把本项目的石板灰 + 蓝色主色灌进组件库主题，避免两套皮肤混用；注意库里的
-   `background` 指的是「窗口/卡片底色」（白色），不是页面的浅灰底。
-
----
+5. **带按钮的对话框是 `AlertDialog`**：0.6 的 `Dialog` 只渲染调用方给的 footer
+   （`AlertDialog` 才有默认的确定/取消）。本项目用 `AlertDialog` + 自定义 footer，
+   两个按钮直接绑回调，不依赖框架的动作分发。
+6. **主题是「三层」的**：`colors`（原始调色板）→ `tokens`（组件级解析结果）→
+   Base 层语义 token。0.6 的按钮读 `colors.button_primary` 这类**组件级字段**而不是
+   `colors.primary`，而且改完 `colors` 必须手动重建 `tokens` 并调用 `Theme::sync_base(cx)`，
+   否则组件仍用默认主题（近黑色主色）。这些都在 `theme::install_component_theme` 里处理了。
 
 ## 统计口径
 
@@ -587,7 +603,9 @@ git push origin main --tags
 - 暂不支持 CSV / Excel 导入导出，可以基于 `Store` 的 JSON 结构扩展。
 - 暂不支持提醒通知；`next_action_at` 已经存好数据，可以接入系统通知。
 - 统计目前按“投递记录”维度计算；如果需要按“岗位”或“公司”聚合，可以在 `stats.rs` 中增加分组函数。
-- GPUI 仍在快速迭代，如果升级 gpui 版本，可能需要同步调整少量 API（本项目固定在 0.2.2）。
+- GPUI 仍在快速迭代：本项目跟随 `gpui-kit 0.6.1`（框架层 `gpui-pre 0.3.4`）。
+  升级时要留意 `gpui_kit::application()`、`AlertDialog` 的 footer、
+  以及主题 `colors → tokens → Base` 三层同步这几处。
 
 ---
 

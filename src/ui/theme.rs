@@ -20,6 +20,11 @@ pub fn sidebar_active() -> Hsla {
     rgb(0x1d4ed8).into()
 }
 
+/// 对话框 / 抽屉背后的遮罩色。
+pub fn overlay() -> Hsla {
+    rgb(0x0f172a).alpha(0.28).into()
+}
+
 pub fn panel() -> Hsla {
     rgb(0xffffff).into()
 }
@@ -181,7 +186,7 @@ pub fn rate_color(rate: f32) -> Hsla {
 /// 石板灰 + 蓝色主色打架。这里把两边的语义色对齐，之后组件库的
 /// Button / Tag / Input / ListItem / Progress 与自绘部分就是同一套皮肤。
 pub fn install_component_theme(cx: &mut App) {
-    use gpui_component::Theme;
+    use gpui_kit::component::{Theme, ThemeTokens};
 
     let theme = Theme::global_mut(cx);
 
@@ -253,4 +258,38 @@ pub fn install_component_theme(cx: &mut App) {
     c.scrollbar = panel_alt();
     c.scrollbar_thumb = border_strong();
     c.scrollbar_thumb_hover = muted();
+    c.overlay = overlay();
+
+    // 组件库 0.6 的按钮取色走「组件级 token」（colors.button_primary 等），
+    // 不是 colors.primary 本体，所以这些字段也要一起给。
+    c.button = panel();
+    c.button_hover = panel_alt();
+    c.button_active = slate_soft();
+    c.button_foreground = text();
+    c.button_secondary = panel();
+    c.button_secondary_hover = panel_alt();
+    c.button_secondary_active = slate_soft();
+    c.button_secondary_foreground = text();
+    c.button_primary = accent();
+    c.button_primary_hover = rgb(0x1d4ed8).into();
+    c.button_primary_active = rgb(0x1e40af).into();
+    c.button_primary_foreground = rgb(0xffffff).into();
+    c.button_danger = danger();
+    c.button_danger_hover = rgb(0xb91c1c).into();
+    c.button_danger_active = rgb(0x991b1b).into();
+    c.button_danger_foreground = rgb(0xffffff).into();
+    c.button_success = success();
+    c.button_success_foreground = rgb(0xffffff).into();
+    c.button_warning = warning();
+    c.button_warning_foreground = rgb(0xffffff).into();
+    c.button_info = accent();
+    c.button_info_foreground = rgb(0xffffff).into();
+
+    // gpui-component 0.6 起组件的取色链路变了：
+    //   colors（原始调色板）→ tokens（组件级解析结果）→ Base 层的语义 token
+    // 直接改 colors 不会自动往下传，两处都要手动刷新，
+    // 否则按钮等组件仍然用默认主题（近黑色主色）。
+    let tokens = ThemeTokens::from(&theme.colors);
+    theme.tokens = tokens;
+    Theme::sync_base(cx);
 }
