@@ -5,7 +5,7 @@ use std::{path::PathBuf, rc::Rc};
 use chrono::NaiveDate;
 use gpui::{
     AnyElement, App, Context, Div, Entity, FocusHandle, Focusable, FontWeight, IntoElement,
-    ParentElement, Render, SharedString, Styled, Window, actions, div, prelude::*, px,
+    ParentElement, Render, SharedString, Stateful, Styled, Window, actions, div, prelude::*, px,
 };
 use gpui_kit::component::{
     Icon, IconName, Sizable as _,
@@ -942,9 +942,8 @@ impl RootView {
         cx.notify();
     }
 
-    fn nav_item(&self, tab: Tab, cx: &Context<Self>) -> Button {
-        nav_button(
-            cx,
+    fn nav_item(&self, tab: Tab, cx: &Context<Self>) -> Stateful<Div> {
+        nav_item(
             format!("nav-{:?}", tab),
             tab.icon(),
             tab.title(),
