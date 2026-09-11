@@ -4,10 +4,12 @@
 //! Progress / ListItem 等，样式与交互（hover、focus ring、禁用态、键盘可达性）
 //! 交给组件库统一处理。
 
-use gpui::{App, Div, FontWeight, Hsla, ParentElement, SharedString, Styled, div, prelude::*, px};
+use gpui::{
+    Div, FontWeight, Hsla, ParentElement, SharedString, Stateful, Styled, div, prelude::*, px,
+};
 use gpui_kit::component::{
     Icon, IconName, Selectable as _, Sizable as _,
-    button::{Button, ButtonCustomVariant, ButtonVariants as _},
+    button::{Button, ButtonVariants as _},
     list::ListItem,
     progress::Progress,
     tag::Tag,
@@ -249,37 +251,68 @@ pub fn danger_button(id: impl Into<SharedString>, label: impl Into<String>) -> B
     Button::new(id.into()).danger().label(label.into())
 }
 
-/// 侧边栏导航按钮。
+/// 侧边栏导航项。
 ///
-/// 侧边栏是深色底，组件库默认的按钮文字色是深色前景色，直接用会看不见，
-/// 因此这里用 `custom` 变体显式指定深色底上的配色。
-pub fn nav_button(
-    cx: &App,
+/// 这里刻意不用组件库的 `Button`：它内部会把内容包在
+/// `h_flex().size_full().justify_center()` 里，外层的 `justify_start` 管不到，
+/// 于是「图标 + 文字」会整体居中、四项还各不对齐。自绘一个 div 更省事：
+/// 图标固定列宽，文字左对齐，激活项用实心主色。
+pub fn nav_item(
     id: impl Into<SharedString>,
     icon: IconName,
     label: impl Into<String>,
     active: bool,
-) -> Button {
-    let variant = if active {
-        ButtonCustomVariant::new(cx)
-            .color(theme::sidebar_active())
-            .foreground(gpui::white())
-            .hover(theme::sidebar_active())
-            .active(theme::sidebar_active())
+) -> Stateful<Div> {
+    let text_color = if active {
+        gpui::white()
     } else {
-        ButtonCustomVariant::new(cx)
-            .color(theme::sidebar_bg())
-            .foreground(theme::text_on_dark())
-            .hover(theme::sidebar_hover())
-            .active(theme::sidebar_hover())
+        theme::text_on_dark()
+    };
+    let idle_bg = if active {
+        theme::sidebar_active()
+    } else {
+        theme::sidebar_bg()
     };
 
-    Button::new(id.into())
+    div()
+        .id(id.into())
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap_2()
         .w_full()
-        .justify_start()
-        .icon(Icon::new(icon))
-        .label(label.into())
-        .custom(variant)
+        .px_2p5()
+        .py_2()
+        .rounded(px(6.))
+        .bg(idle_bg)
+        .text_color(text_color)
+        .cursor_pointer()
+        .hover(move |style| {
+            style.bg(if active {
+                theme::sidebar_active()
+            } else {
+                theme::sidebar_hover()
+            })
+        })
+        .child(
+            div()
+                .flex_shrink_0()
+                .w(px(18.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(Icon::new(icon).size(px(16.)).text_color(text_color)),
+        )
+        .child(
+            div()
+                .text_sm()
+                .font_weight(if active {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .child(label.into()),
+        )
 }
 
 /// 阶段筛选按钮。
