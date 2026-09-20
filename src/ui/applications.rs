@@ -216,6 +216,10 @@ impl RootView {
         // 删除需要点两次：第一次把按钮变成“确认删除”。
         let confirming_delete = self.confirm_delete == Some(id);
         let chronology_issue = application.has_chronology_issue();
+        // 阶段流转用的日期：不是今天时高亮，避免把补录日期记错。
+        let today = model::today();
+        let stage_date = self.stage_date_value(cx);
+        let stage_date_is_today = stage_date == today;
 
         card()
             .flex()
@@ -314,10 +318,40 @@ impl RootView {
                                 format!("detail-stage-{:?}", progress),
                             )
                             .on_click(cx.listener(
-                                move |this, _, _window, cx| this.set_selected_stage(progress, cx),
+                                move |this, _, window, cx| {
+                                    this.set_selected_stage(progress, window, cx)
+                                },
                             ))
                         }),
                     ))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_end()
+                            .gap_3()
+                            .child(div().w(px(176.)).child(self.date_field(
+                                "阶段日期",
+                                self.stage_date.clone(),
+                                "选择日期",
+                            )))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .text_xs()
+                                    .text_color(if stage_date_is_today {
+                                        theme::subtle()
+                                    } else {
+                                        theme::orange()
+                                    })
+                                    .child(if stage_date_is_today {
+                                        "推进 / 切换阶段时按这一天写入历史".to_string()
+                                    } else {
+                                        format!("将按 {stage_date} 记录阶段变更（不是今天）")
+                                    }),
+                            ),
+                    )
                     .child(
                         div()
                             .flex()
@@ -332,21 +366,19 @@ impl RootView {
                                 )
                                 .when(!can_advance, |el| el.opacity(0.5))
                                 .when(can_advance, |el| {
-                                    el.on_click(
-                                        cx.listener(|this, _, _window, cx| {
-                                            this.advance_selected(cx)
-                                        }),
-                                    )
+                                    el.on_click(cx.listener(|this, _, window, cx| {
+                                        this.advance_selected(window, cx)
+                                    }))
                                 }),
                             )
                             .child(secondary_button("mark-rejected", "标记拒绝").on_click(
-                                cx.listener(|this, _, _window, cx| {
-                                    this.set_selected_stage(Stage::Rejected, cx)
+                                cx.listener(|this, _, window, cx| {
+                                    this.set_selected_stage(Stage::Rejected, window, cx)
                                 }),
                             ))
                             .child(secondary_button("mark-withdrawn", "标记放弃").on_click(
-                                cx.listener(|this, _, _window, cx| {
-                                    this.set_selected_stage(Stage::Withdrawn, cx)
+                                cx.listener(|this, _, window, cx| {
+                                    this.set_selected_stage(Stage::Withdrawn, window, cx)
                                 }),
                             )),
                     ),
@@ -453,7 +485,9 @@ impl RootView {
                             .text_color(theme::muted())
                             .child(format!("阶段历史 · {} 条", history.len())),
                     )
-                    .children(history.into_iter().rev().map(|event| {
+                    .children(history.into_iter().enumerate().rev().map(|(index, event)| {
+                        // 「已投递」事件的日期就是投递日期，走表单里的「编辑」，这里只改后续阶段。
+                        let editable = event.stage != Stage::Applied;
                         div()
                             .flex()
                             .flex_row()
@@ -471,6 +505,7 @@ impl RootView {
                                 div()
                                     .flex()
                                     .flex_col()
+                                    .flex_1()
                                     .gap_0p5()
                                     .min_w(px(0.))
                                     .child(
@@ -502,6 +537,14 @@ impl RootView {
                                         )
                                     }),
                             )
+                            .when(editable, |el| {
+                                el.child(
+                                    small_button(format!("edit-event-date-{index}"), "改日期")
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.open_event_date_dialog(index, window, cx)
+                                        })),
+                                )
+                            })
                     })),
             )
     }

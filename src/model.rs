@@ -179,6 +179,71 @@ impl JobApplication {
             at,
             note: note.into(),
         });
+        // 阶段日期可以手动指定（可能早于上一条事件），这里保持历史始终按日期有序，
+        // 否则详情页的“阶段历史”会看起来乱序，相邻事件区间的校验也会失准。
+        self.history.sort_by_key(|event| event.at);
+    }
+
+    /// 记录一次**新的**阶段变更时校验日期。
+    ///
+    /// 约束：不早于投递日期、不早于上一条事件、不晚于今天。
+    /// 早于投递日期会让“面试等待/Offer 周期”变成负数，晚于今天则是不可能的未来事件。
+    pub fn validate_stage_change_date(&self, at: NaiveDate) -> Result<(), String> {
+        let today = today();
+        if at > today {
+            return Err(format!("阶段日期不能晚于今天（{today}）"));
+        }
+        if at < self.applied_at {
+            return Err(format!("阶段日期不能早于投递日期（{}）", self.applied_at));
+        }
+        if let Some(last) = self.history.last().map(|event| event.at) {
+            if at < last {
+                return Err(format!("阶段日期不能早于上一条事件（{last}）"));
+            }
+        }
+        Ok(())
+    }
+
+    /// 某条历史事件可以改成哪些日期（闭区间）。
+    ///
+    /// 除了「投递日期 ~ 今天」，还要求不破坏历史顺序：不早于上一条、不晚于下一条事件。
+    /// 起始的「已投递」事件跟随投递日期（由表单里的“投递日期”维护），因此返回 `None`。
+    /// 若数据本身已经不单调（旧数据或手改过 JSON），退回到只按投递日期 ~ 今天限制。
+    pub fn event_date_bounds(&self, index: usize) -> Option<(NaiveDate, NaiveDate)> {
+        if self.history.get(index)?.stage == Stage::Applied {
+            return None;
+        }
+        let today = today();
+        let mut lower = self.applied_at;
+        if let Some(previous) = index.checked_sub(1).and_then(|i| self.history.get(i)) {
+            lower = lower.max(previous.at);
+        }
+        let mut upper = today;
+        if let Some(next) = self.history.get(index + 1) {
+            upper = upper.min(next.at);
+        }
+        if lower > upper {
+            lower = self.applied_at;
+            upper = today;
+        }
+        Some((lower, upper))
+    }
+
+    /// 修改一条已有阶段事件的日期，返回被修改的阶段。
+    ///
+    /// 只允许改非起始事件：投递日期是整条记录的锚点，它由表单里的“投递日期”维护。
+    pub fn update_event_date(&mut self, index: usize, at: NaiveDate) -> Result<Stage, String> {
+        let Some((lower, upper)) = self.event_date_bounds(index) else {
+            return Err("这条事件不能单独改日期（投递日期请用“编辑”修改）".to_string());
+        };
+        if at < lower || at > upper {
+            return Err(format!("阶段日期需要在 {lower} ~ {upper} 之间"));
+        }
+        let event = &mut self.history[index];
+        event.at = at;
+        let stage = event.stage;
+        self.history.sort_by_key(|event| event.at);
+        Ok(stage)
     }
 
     /// 推进到下一个线性阶段；若已到 Offer 或处于终止状态则返回 false。
@@ -707,5 +772,114 @@ mod tests {
         );
         assert_eq!(application.stage, Stage::Applied);
         assert_eq!(application.undo_last_stage_change(date(2026, 3, 10)), None);
+    }
+
+    #[test]
+    fn new_stage_change_date_must_stay_between_applied_and_today() {
+        let today = today();
+        let applied = today - chrono::Days::new(30);
+        let mut application = JobApplication::new("校验公司", "工程师", applied);
+
+        assert!(application.validate_stage_change_date(applied).is_ok());
+        assert!(application.validate_stage_change_date(today).is_ok());
+
+        let too_early = application
+            .validate_stage_change_date(applied - chrono::Days::new(1))
+            .unwrap_err();
+        assert!(too_early.contains("投递日期"), "{too_early}");
+
+        let too_late = application
+            .validate_stage_change_date(today + chrono::Days::new(1))
+            .unwrap_err();
+        assert!(too_late.contains("今天"), "{too_late}");
+
+        // 有后续事件后，新的阶段变更不能倒着记（否则历史乱序、撤销会撤错条）。
+        application.set_stage(Stage::Interview1, today - chrono::Days::new(3), "一面");
+        let backwards = application
+            .validate_stage_change_date(today - chrono::Days::new(4))
+            .unwrap_err();
+        assert!(backwards.contains("上一条事件"), "{backwards}");
+        assert!(
+            application
+                .validate_stage_change_date(today - chrono::Days::new(3))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn event_date_edit_keeps_history_sorted_and_bounded() {
+        let today = today();
+        let applied = today - chrono::Days::new(30);
+        let mut application = JobApplication::new("改日期公司", "工程师", applied);
+        application.set_stage(
+            Stage::ResumeScreening,
+            applied + chrono::Days::new(4),
+            "简历筛选",
+        );
+        application.set_stage(Stage::Interview1, applied + chrono::Days::new(11), "一面");
+
+        // 起始事件跟随「投递日期」，不在这里单独改；下标越界也要拒绝。
+        assert_eq!(application.event_date_bounds(0), None);
+        assert!(application.update_event_date(0, applied).is_err());
+        assert!(application.update_event_date(99, applied).is_err());
+
+        // 中间事件被投递日期与下一条事件夹住。
+        assert_eq!(
+            application.event_date_bounds(1),
+            Some((applied, applied + chrono::Days::new(11)))
+        );
+        assert_eq!(
+            application.update_event_date(1, applied + chrono::Days::new(1)),
+            Ok(Stage::ResumeScreening)
+        );
+        assert!(
+            application
+                .update_event_date(1, applied + chrono::Days::new(12))
+                .is_err()
+        );
+
+        // 最后一条事件：下界是上一条事件，上界是今天。
+        assert_eq!(
+            application.event_date_bounds(2),
+            Some((applied + chrono::Days::new(1), today))
+        );
+        assert!(application.update_event_date(2, applied).is_err());
+        assert_eq!(
+            application.update_event_date(2, today),
+            Ok(Stage::Interview1)
+        );
+
+        // 改完历史仍按日期有序；当前阶段与 updated_at 不受影响；周期天数跟着新日期走。
+        let dates: Vec<_> = application.history.iter().map(|event| event.at).collect();
+        assert!(dates.windows(2).all(|pair| pair[0] <= pair[1]), "{dates:?}");
+        assert_eq!(application.stage, Stage::Interview1);
+        assert_eq!(application.updated_at, applied + chrono::Days::new(11));
+        assert_eq!(application.first_interview_at(), Some(today));
+        assert_eq!(application.days_to_first_interview(), Some(30));
+    }
+
+    #[test]
+    fn stage_history_stays_sorted_after_backdated_change() {
+        let today = today();
+        let applied = today - chrono::Days::new(20);
+        let mut application = JobApplication::new("补录公司", "工程师", applied);
+        application.set_stage(Stage::Interview1, applied + chrono::Days::new(10), "一面");
+        // 直接调用模型时允许补一条更早的事件（界面上会被日期校验拦住），历史依旧按日期有序。
+        application.set_stage(
+            Stage::ResumeScreening,
+            applied + chrono::Days::new(2),
+            "补录简历筛选",
+        );
+
+        let stages: Vec<_> = application
+            .history
+            .iter()
+            .map(|event| event.stage)
+            .collect();
+        assert_eq!(
+            stages,
+            vec![Stage::Applied, Stage::ResumeScreening, Stage::Interview1]
+        );
+        assert!(application.reached(Stage::Interview1));
     }
 }

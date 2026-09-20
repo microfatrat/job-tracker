@@ -76,6 +76,15 @@ impl Tab {
     }
 }
 
+/// 阶段变更提示里的日期后缀：就是今天时不啰嗦。
+fn stage_date_suffix(at: NaiveDate) -> String {
+    if at == model::today() {
+        String::new()
+    } else {
+        format!("（记于 {at}）")
+    }
+}
+
 /// 提示消息的类型（映射到组件库的 Notification 级别）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToastKind {
@@ -142,6 +151,22 @@ fn new_date_picker(
         if let Some(date) = default {
             state.set_date(date, window, cx);
         }
+        state
+    })
+}
+
+/// 建一个只允许 `lower ~ upper` 区间的日期选择器（改阶段日期时用）。
+fn new_range_date_picker(
+    window: &mut Window,
+    cx: &mut App,
+    value: NaiveDate,
+    lower: NaiveDate,
+    upper: NaiveDate,
+) -> Entity<DatePickerState> {
+    cx.new(move |cx| {
+        let mut state = DatePickerState::new(window, cx).date_format(model::DATE_FORMAT);
+        state = state.disabled_matcher(Matcher::custom(move |date| *date < lower || *date > upper));
+        state.set_date(value, window, cx);
         state
     })
 }
@@ -266,6 +291,21 @@ impl FormState {
     }
 }
 
+/// 正在修改日期的阶段事件（阶段历史里点“改日期”打开）。
+pub struct EventEdit {
+    /// 所属投递记录。
+    pub application: Uuid,
+    /// 该事件在 `history` 里的下标（历史按日期有序）。
+    pub index: usize,
+    pub stage: Stage,
+    /// 事件当前记录的日期。
+    pub current: NaiveDate,
+    /// 允许改成的日期区间（投递日期/相邻事件/今天共同决定）。
+    pub lower: NaiveDate,
+    pub upper: NaiveDate,
+    pub date: Entity<DatePickerState>,
+}
+
 /// 应用根视图。
 pub struct RootView {
     pub store: Store,
@@ -302,6 +342,10 @@ pub struct RootView {
     analytics_cache: Option<(NaiveDate, u64, Rc<Analytics>)>,
     /// 每次写入数据后自增，用于让统计缓存失效。
     data_revision: u64,
+    /// 阶段流转使用的日期：推进/切换阶段时按这一天写入历史（默认今天）。
+    pub stage_date: Entity<DatePickerState>,
+    /// 正在修改日期的阶段事件，弹窗打开时才有值。
+    pub event_edit: Option<EventEdit>,
 }
 
 impl RootView {
@@ -354,6 +398,8 @@ impl RootView {
         })
         .detach();
         let form = FormState::new(window, cx);
+        // 阶段流转的日期默认今天；推进/切换阶段时按它写入历史。
+        let stage_date = new_date_picker(window, cx, Some(model::today()), true);
 
         Self {
             store,
@@ -378,6 +424,8 @@ impl RootView {
             data_damaged: outcome.damaged,
             analytics_cache: None,
             data_revision: 0,
+            stage_date,
+            event_edit: None,
         }
     }
 
@@ -785,36 +833,251 @@ impl RootView {
         }
     }
 
-    pub fn set_selected_stage(&mut self, stage: Stage, cx: &mut Context<Self>) {
-        let Some(id) = self.selected else {
-            return;
-        };
-        if let Some(application) = self.store.get_mut(id) {
-            application.set_stage(
-                stage,
-                model::today(),
-                format!("手动切换到 {}", stage.label()),
-            );
-            self.set_toast(format!("已更新为 {}", stage.label()), ToastKind::Success, cx);
-            self.save_store(cx);
+    /// 阶段流转当前选中的日期（没选时按今天）。
+    pub(crate) fn stage_date_value(&self, cx: &App) -> NaiveDate {
+        match self.stage_date.read(cx).date() {
+            Date::Single(Some(date)) => date,
+            _ => model::today(),
         }
     }
 
-    pub fn advance_selected(&mut self, cx: &mut Context<Self>) {
+    /// 阶段流转的日期回到默认的今天。
+    fn reset_stage_date(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.stage_date
+            .update(cx, |state, cx| state.set_date(model::today(), window, cx));
+    }
+
+    /// 手动切换阶段：按「阶段日期」写入历史，日期不合法时拒绝并提示。
+    pub fn set_selected_stage(
+        &mut self,
+        stage: Stage,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(id) = self.selected else {
             return;
         };
-        if let Some(application) = self.store.get_mut(id) {
-            let next = application.stage.next_progress();
-            if application.advance(model::today()) {
-                let label = next.map(|stage| stage.label()).unwrap_or("下一阶段");
-                self.set_toast(format!("已推进到 {label}"), ToastKind::Success, cx);
+        let at = self.stage_date_value(cx);
+        match self.store.get(id).map(|application| application.stage) {
+            None => {
+                self.set_toast("要操作的记录已不存在", ToastKind::Error, cx);
+                return;
+            }
+            Some(current) if current == stage => {
+                self.set_toast(
+                    format!("当前已经是 {}，未写入历史", stage.label()),
+                    ToastKind::Info,
+                    cx,
+                );
+                return;
+            }
+            Some(_) => {}
+        }
+
+        let outcome = self.store.get_mut(id).map(|application| {
+            application.validate_stage_change_date(at)?;
+            application.set_stage(stage, at, format!("手动切换到 {}", stage.label()));
+            Ok::<(), String>(())
+        });
+
+        match outcome {
+            Some(Ok(())) => {
+                self.set_toast(
+                    format!("已更新为 {}{}", stage.label(), stage_date_suffix(at)),
+                    ToastKind::Success,
+                    cx,
+                );
+                self.reset_stage_date(window, cx);
                 self.save_store(cx);
-            } else {
-                self.set_toast("当前阶段无法继续推进", ToastKind::Info, cx);
-                cx.notify();
+            }
+            Some(Err(error)) => self.set_toast(error, ToastKind::Error, cx),
+            None => self.set_toast("要操作的记录已不存在", ToastKind::Error, cx),
+        }
+    }
+
+    /// 推进到下一个阶段：同样按「阶段日期」写入历史。
+    pub fn advance_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(id) = self.selected else {
+            return;
+        };
+        let at = self.stage_date_value(cx);
+        let Some(next) = self
+            .store
+            .get(id)
+            .and_then(|application| application.stage.next_progress())
+        else {
+            self.set_toast("当前阶段无法继续推进", ToastKind::Info, cx);
+            return;
+        };
+
+        let outcome = self
+            .store
+            .get_mut(id)
+            .map(|application| -> Result<Stage, String> {
+                application.validate_stage_change_date(at)?;
+                application.advance(at);
+                Ok(next)
+            });
+
+        match outcome {
+            Some(Ok(stage)) => {
+                self.set_toast(
+                    format!("已推进到 {}{}", stage.label(), stage_date_suffix(at)),
+                    ToastKind::Success,
+                    cx,
+                );
+                self.reset_stage_date(window, cx);
+                self.save_store(cx);
+            }
+            Some(Err(error)) => self.set_toast(error, ToastKind::Error, cx),
+            None => self.set_toast("要操作的记录已不存在", ToastKind::Error, cx),
+        }
+    }
+
+    /// 打开「修改阶段日期」弹窗。
+    pub fn open_event_date_dialog(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(id) = self.selected else {
+            return;
+        };
+        let Some(application) = self.store.get(id) else {
+            return;
+        };
+        let Some((lower, upper)) = application.event_date_bounds(index) else {
+            self.set_toast(
+                "这条事件不能单独改日期，投递日期请用「编辑」修改",
+                ToastKind::Info,
+                cx,
+            );
+            return;
+        };
+        let event = application.history[index].clone();
+        let date = new_range_date_picker(window, cx, event.at, lower, upper);
+        self.event_edit = Some(EventEdit {
+            application: id,
+            index,
+            stage: event.stage,
+            current: event.at,
+            lower,
+            upper,
+            date,
+        });
+
+        let view = cx.entity();
+        window.open_alert_dialog(cx, move |dialog, _window, cx| {
+            let this = view.read(cx);
+            let title = match &this.event_edit {
+                Some(edit) => format!("修改「{}」的日期", edit.stage.label()),
+                None => "修改阶段日期".to_string(),
+            };
+            dialog
+                .title(title)
+                .width(px(460.))
+                // ESC / 点遮罩关闭时也要把状态清掉，避免下次打开残留旧事件。
+                .on_close({
+                    let close_view = view.clone();
+                    move |_, _, cx| {
+                        close_view.update(cx, |this, cx| this.close_event_date_dialog(cx));
+                    }
+                })
+                .child(this.event_date_dialog_body())
+                .footer({
+                    let cancel_view = view.clone();
+                    let save_view = view.clone();
+                    div()
+                        .flex()
+                        .flex_row()
+                        .justify_end()
+                        .gap_2()
+                        .child(secondary_button("cancel-event-date", "取消").on_click(
+                            move |_, window, cx| {
+                                cancel_view.update(cx, |this, cx| this.close_event_date_dialog(cx));
+                                window.close_dialog(cx);
+                            },
+                        ))
+                        .child(primary_button("save-event-date", "保存日期").on_click(
+                            move |_, window, cx| {
+                                let saved = save_view
+                                    .update(cx, |this, cx| this.save_event_date(window, cx));
+                                if saved {
+                                    window.close_dialog(cx);
+                                }
+                            },
+                        ))
+                })
+        });
+        cx.notify();
+    }
+
+    /// 弹窗主体：显示当前日期与可选范围。
+    fn event_date_dialog_body(&self) -> impl IntoElement {
+        let Some(edit) = self.event_edit.as_ref() else {
+            return div()
+                .text_sm()
+                .text_color(theme::muted())
+                .child("阶段事件已不存在");
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_xs().text_color(theme::muted()).child(format!(
+                "当前记录：{} · {}",
+                edit.stage.label(),
+                edit.current
+            )))
+            .child(self.date_field("阶段日期", edit.date.clone(), "选择阶段日期"))
+            .child(div().text_xs().text_color(theme::subtle()).child(format!(
+                "可选范围 {} ~ {}：不早于投递日期与上一条事件，不晚于下一条事件与今天",
+                edit.lower, edit.upper
+            )))
+    }
+
+    /// 保存阶段事件的新日期。返回 `false` 表示校验失败，弹窗保持打开。
+    pub fn save_event_date(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(edit) = self.event_edit.as_ref() else {
+            return true;
+        };
+        let (id, index) = (edit.application, edit.index);
+        let date = match edit.date.read(cx).date() {
+            Date::Single(Some(date)) => date,
+            _ => {
+                self.set_toast("请选择阶段日期", ToastKind::Error, cx);
+                return false;
+            }
+        };
+
+        let outcome = match self.store.get_mut(id) {
+            Some(application) => application.update_event_date(index, date),
+            None => Err("要修改的记录已不存在".to_string()),
+        };
+
+        match outcome {
+            Ok(stage) => {
+                self.event_edit = None;
+                self.set_toast(
+                    format!("「{}」的日期已改为 {date}", stage.label()),
+                    ToastKind::Success,
+                    cx,
+                );
+                self.save_store(cx);
+                window.focus(&self.focus_handle(cx), cx);
+                true
+            }
+            Err(error) => {
+                self.set_toast(error, ToastKind::Error, cx);
+                false
             }
         }
+    }
+
+    pub fn close_event_date_dialog(&mut self, cx: &mut Context<Self>) {
+        self.event_edit = None;
+        cx.notify();
     }
 
     /// 第一次点击进入确认状态，第二次点击才用演示数据覆盖现有数据。
@@ -1148,7 +1411,12 @@ impl RootView {
     }
 
     /// 表单里的日期字段：点击弹出日历选择，不需要手输日期。
-    fn date_field(&self, label: &str, state: Entity<DatePickerState>, placeholder: &str) -> Div {
+    pub(crate) fn date_field(
+        &self,
+        label: &str,
+        state: Entity<DatePickerState>,
+        placeholder: &str,
+    ) -> Div {
         let placeholder = placeholder.to_string();
         div()
             .flex()

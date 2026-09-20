@@ -329,6 +329,11 @@ pub fn stage_chip(
         .when(active, |button| button.primary())
 }
 
+/// 小号次要按钮：阶段历史行内这类紧凑位置用。
+pub fn small_button(id: impl Into<SharedString>, label: impl Into<String>) -> Button {
+    Button::new(id.into()).small().label(label.into())
+}
+
 /// 标签徽章（组件库 Tag）。
 pub fn tag_badge(tag: &str) -> Tag {
     Tag::secondary()
