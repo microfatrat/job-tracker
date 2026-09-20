@@ -1,6 +1,6 @@
 [package]
 name = "job-tracker"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 rust-version = "1.85"
 description = "求职简历投递与面试阶段统计系统 (GPUI)"

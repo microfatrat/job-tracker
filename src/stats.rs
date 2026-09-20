@@ -39,7 +39,7 @@ pub struct StageStat {
     pub stage: Stage,
     /// 到达过该阶段（含之后阶段）的投递数。
     pub reached: usize,
-    /// 上一阶段的到达人数（第一个阶段为总投递数）。
+    /// 上一阶段的到达投递数（第一个阶段为总投递数）。
     pub previous_reached: usize,
     /// 当前正处于该阶段的投递数。
     pub current: usize,

@@ -62,7 +62,7 @@ impl Tab {
             Tab::Dashboard => "一眼看清整体求职进展与待办",
             Tab::Applications => "维护每一条投递记录与阶段流转",
             Tab::Analytics => "漏斗、转化率与渠道效果分析",
-            Tab::Settings => "数据管理、快捷键与版本信息",
+            Tab::Settings => "数据管理、数据体检与版本信息",
         }
     }
 

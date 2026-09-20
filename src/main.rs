@@ -367,7 +367,7 @@ fn print_report() {
     println!("\n阶段漏斗：");
     for stat in &analytics.stages {
         println!(
-            "  {:<10} 到达 {:>3} 人  到达率 {:>5.1}%  环节留存 {:>5.1}%  当前 {:>2} 人",
+            "  {:<10} 到达 {:>3} 条  到达率 {:>5.1}%  环节留存 {:>5.1}%  当前 {:>2} 条",
             stat.stage.label(),
             stat.reached,
             stat.conversion * 100.0,

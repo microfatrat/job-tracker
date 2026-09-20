@@ -1,4 +1,4 @@
-//! 设置页面：数据管理、快捷键与版本信息。
+//! 设置页面：数据管理、数据体检与版本信息。
 
 use gpui::{Context, IntoElement, div, prelude::*};
 use gpui_kit::component::alert::Alert;
@@ -38,7 +38,7 @@ impl RootView {
                         div()
                             .text_sm()
                             .text_color(theme::muted())
-                            .child("数据管理、快捷键与构建信息"),
+                            .child("数据管理、数据体检与构建信息"),
                     ),
             )
             .child(

@@ -117,7 +117,7 @@ impl RootView {
                                 .p_5()
                                 .child(card_title(
                                     "阶段漏斗与转化率",
-                                    "到达率 = 到达该阶段的人数 / 总投递数",
+                                    "到达率 = 到达该阶段的投递数 / 总投递数",
                                 ))
                                 .child(
                                     div().flex().flex_col().children(
@@ -181,7 +181,7 @@ impl RootView {
                                             let lost = previous.saturating_sub(stat.reached);
                                             div().text_xs().text_color(theme::subtle()).child(
                                                 format!(
-                                                    "上一环节 {} 人，本环节 {} 人，流失 {} 人",
+                                                    "上一环节 {} 条，本环节 {} 条，流失 {} 条",
                                                     previous, stat.reached, lost
                                                 ),
                                             )
